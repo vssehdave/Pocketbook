@@ -47,4 +47,4 @@ The lists are `.pocketbook/todo.md` and `.pocketbook/backlog.md` in the project,
 - It does not remove Claude Code's own "Context low" warning.
 - Claude Code only.
 
-Install: `/plugin install pocketbook --marketplace <owner>/Pocketbook`
+Install: `/plugin marketplace add vssehdave/library`, then `/plugin install pocketbook@library`.

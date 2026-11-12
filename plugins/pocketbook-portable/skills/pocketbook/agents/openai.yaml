@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pocketbook"
+  short_description: "A todo list and backlog that survive long conversations"
+  default_prompt: "Use $pocketbook to show my todo list."
