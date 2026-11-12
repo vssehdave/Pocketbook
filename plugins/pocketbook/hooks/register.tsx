@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Conf, Meter, Mode } from '../types'
-import { K, MODES, band, ceilingOf, defaults, isMode, leftOf, limitsOf } from './lib'
+import { K, MODES, band, ceilingOf, defaults, isMode, leftOf, limitsOf, rule, softNote } from './lib'
 import { PATTERN, confFor, hardLimit, sizesOf, suggested, table, tokensIn } from './analysis'
 import { BACKLOG, TODO, listing, parse, pick, serialize, summaryOf } from './todo'
 import type { Item } from './todo'
@@ -17,12 +17,34 @@ const isModesOpen = atom({ plugin: 'pocketbook', key: 'isModesOpen' } as const, 
 async function setMode($: any, picked: Mode) {
   await $.store.set('mode', picked)
   await update($, mode, () => picked)
+  await note($)
+}
+
+// Where the conversation stands once it is past the mode's soft limit, against the limit the footer shows; nothing before that.
+async function pastSoft($: any) {
+  const m = await read($, meter)
+  const limits = await read($, conf)
+
+  if (m === null || limits === null) {
+    return undefined
+  }
+
+  const { soft, shown } = limitsOf(limits, await read($, mode))
+
+  return soft !== undefined && m.tokens >= soft ? { tokens: m.tokens, limit: shown } : undefined
+}
+
+// The status line holds the soft-limit note for as long as it is true, and is cleared when it stops being.
+async function note($: any) {
+  const past = await pastSoft($)
+  $.ui.status(past === undefined ? undefined : softNote(past.tokens, past.limit))
 }
 
 // Reads the size after the engine has done its part, so the figure is the reply's, not the one before.
 async function refresh($: any) {
   const { context } = await $.session.usage()
   await update($, meter, () => (context.tokens === undefined ? null : { tokens: context.tokens }))
+  await note($)
 }
 
 async function readList($: any, path: string): Promise<Item[]> {
@@ -280,6 +302,13 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'pocketbook' }, async ($, e) => ({ text: await run($, e.args.trim()) }))
+
+  // Past the soft limit the model reads the rule beside every prompt, so it is always measured against the room left now.
+  on('prompt.submit', async ($, e, next) => {
+    const past = e.command === undefined ? await pastSoft($) : undefined
+
+    return next(past === undefined ? e : { ...e, context: [...(e.context ?? []), rule(past.tokens, past.limit, TODO)] })
+  })
 
   on('tool.call', async ($, e, next) => {
     const result = await next(e)
