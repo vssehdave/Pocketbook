@@ -69,6 +69,7 @@ test('the mode button opens the four modes, a press picks one and keeps it, and 
   })
   on('session.usage', () => ({ value: { startedAt: 0, rateLimits: [], context: { window: 1_000_000, tokens: 60_000 } } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', () => ({ value: { command: 'pocketbook' } }))
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount(SLOT)
 
@@ -97,6 +98,7 @@ test('the first session works the limits out from the compaction window and keep
     value: { startedAt: 0, rateLimits: [], context: { window: 1_000_000, breakdown: { rawMaxTokens: 300_000, autocompactSource: 'env' } } },
   }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', () => ({ value: { command: 'pocketbook' } }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
