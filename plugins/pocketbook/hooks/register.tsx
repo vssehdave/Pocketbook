@@ -6,7 +6,7 @@ import type { Meter } from '../types'
 // The size the conversation is measured against: where it is compacted (CLAUDE_CODE_AUTO_COMPACT_WINDOW). shortcut: a constant, change it here if that changes.
 const WINDOW = 300_000
 
-const meter = atom({ plugin: 'context-meter', key: 'meter' } as const, null as Meter)
+const meter = atom({ plugin: 'pocketbook', key: 'meter' } as const, null as Meter)
 
 // Bands of what is left: 70% or more is high, 35 to 69 medium, under 35 low.
 const band = (left: number) =>

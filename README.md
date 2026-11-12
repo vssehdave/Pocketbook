@@ -4,13 +4,13 @@ Small plugins for the coding agents I use.
 
 | Plugin | What it does | Works in |
 | --- | --- | --- |
-| [context-meter](plugins/context-meter) | Shows how much context is left, at the right of the prompt footer: `Context high (82% remaining)` in green at 70% or more, medium in yellow from 35% to 69%, low in red under 35%. | Claude Code |
+| [pocketbook](plugins/pocketbook) | Shows how much context is left, at the right of the prompt footer: `Context high (82% remaining)` in green at 70% or more, medium in yellow from 35% to 69%, low in red under 35%. | Claude Code |
 
 ## Install
 
 ```
 /plugin marketplace add <owner>/Pocketbook
-/plugin install context-meter@pocketbook
+/plugin install pocketbook@pocketbook
 ```
 
 Or from a local clone: `/plugin marketplace add <path to this folder>`.
