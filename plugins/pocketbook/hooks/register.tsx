@@ -1,20 +1,11 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { Meter } from '../types'
-
-// The size the conversation is measured against: where it is compacted (CLAUDE_CODE_AUTO_COMPACT_WINDOW). shortcut: a constant, change it here if that changes.
-const WINDOW = 300_000
+import type { Conf, Meter } from '../types'
+import { K, band, ceilingOf, defaults, leftOf } from './lib'
 
 const meter = atom({ plugin: 'pocketbook', key: 'meter' } as const, null as Meter)
-
-// Bands of what is left: 70% or more is high, 35 to 69 medium, under 35 low.
-const band = (left: number) =>
-  left >= 70
-    ? { name: 'high', color: 'green' }
-    : left >= 35
-      ? { name: 'medium', color: 'yellow' }
-      : { name: 'low', color: 'red' }
+const conf = atom({ plugin: 'pocketbook', key: 'conf' } as const, null as Conf | null)
 
 // Reads the size after the engine has done its part, so the figure is the reply's, not the one before.
 async function refresh($: any) {
@@ -22,10 +13,23 @@ async function refresh($: any) {
   await update($, meter, () => (context.tokens === undefined ? null : { tokens: context.tokens }))
 }
 
-export const register: Register = on => {
+// The limits are kept across sessions; the first session works them out from the window Claude Code itself measures against.
+async function loadConf($: any) {
+  let kept = (await $.store.get('conf')) as Conf | undefined
 
+  if (kept === undefined) {
+    const { context } = await $.session.usage({ breakdown: 'summary' }).catch(() => $.session.usage())
+    kept = defaults(ceilingOf(context.window, context.breakdown))
+    await $.store.set('conf', kept)
+  }
+
+  await update($, conf, () => kept)
+}
+
+export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
+    await loadConf($)
     await refresh($)
 
     return result
@@ -54,20 +58,20 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     const m = await read($, meter)
+    const limits = await read($, conf)
 
-    if (m === null) {
+    if (m === null || limits === null) {
       return next(e)
     }
 
-    const left = Math.max(0, Math.round(100 - (m.tokens / WINDOW) * 100))
-    const { name, color } = band(left)
+    const { name, color } = band(leftOf(m.tokens, limits.hard))
     const { Box, Text } = $.ui.resolve(e)
 
     return (
       <Box gap={1}>
         {await next(e)}
         <Text color={color}>
-          Context {name} ({left}% remaining)
+          Context {name} {K(m.tokens)} of {K(limits.hard)}
         </Text>
       </Box>
     )
