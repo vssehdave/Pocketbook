@@ -3,6 +3,7 @@ import type { Register } from 'claude-code'
 
 import type { Conf, Meter, Mode } from '../types'
 import { K, MODES, band, ceilingOf, defaults, isMode, leftOf, limitsOf } from './lib'
+import { PATTERN, confFor, hardLimit, sizesOf, suggested, table, tokensIn } from './analysis'
 import { BACKLOG, TODO, listing, parse, pick, serialize, summaryOf } from './todo'
 import type { Item } from './todo'
 
@@ -61,6 +62,111 @@ async function addTodo($: any, text: string) {
   await writeList($, TODO, [...items, { summary: await summarize($, text), full: text }])
 }
 
+// The context size of every request in the transcripts of the last `days` days, per conversation. Claude Code keeps them under its
+// configuration folder; git pulls the counts out, a few files at a time so no answer is cut.
+async function history($: any, days: number): Promise<number[][]> {
+  const home = (await $.env.get('CLAUDE_CONFIG_DIR')) ?? `${(await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME'))}/.claude`
+  const root = `${home}/projects`
+  const since = (await $.clock.now()) - days * 86_400_000
+  const batches: string[][] = [[]]
+  let size = 0
+
+  for (const dir of (await $.fs.list(root).catch(() => [])) as Array<{ name: string; kind: string }>) {
+    if (dir.kind !== 'dir') {
+      continue
+    }
+
+    for (const file of (await $.fs.list(`${root}/${dir.name}`).catch(() => [])) as Array<{ name: string; kind: string; size: number; mtimeMs: number }>) {
+      if (file.kind !== 'file' || !file.name.endsWith('.jsonl') || file.mtimeMs < since) {
+        continue
+      }
+
+      if (size + file.size > 15_000_000 || batches.at(-1)!.length >= 20) {
+        batches.push([])
+        size = 0
+      }
+
+      batches.at(-1)!.push(`${dir.name}/${file.name}`)
+      size += file.size
+    }
+  }
+
+  const sizes = new Map<string, number[]>()
+
+  for (const batch of batches) {
+    if (batch.length > 0) {
+      const { stdout } = await $.process.run(['git', 'grep', '--no-index', '-n', '-o', '-E', PATTERN, '--', ...batch], { cwd: root, timeoutMs: 120_000 })
+      sizesOf(stdout, sizes)
+    }
+  }
+
+  return [...sizes.values()]
+}
+
+// /pocketbook setup: shows what each soft limit would have saved over the person's own history, lets them pick one, and works the
+// hard limits out from where their conversations went after it.
+async function setup($: any, typed: string): Promise<string> {
+  const days = /^\d+$/.test(typed) ? Math.max(1, Number(typed)) : 14
+  const before = (await read($, conf)) ?? defaults(ceilingOf((await $.session.usage()).context.window))
+  const sessions = await history($, days).catch(() => [] as number[][])
+  const rows = table(sessions, before.ceiling)
+  const best = suggested(rows) ?? before.soft
+  const report =
+    sessions.length === 0
+      ? `Found no conversations from the last ${days} days to learn from (git is needed to read them), so the choices below are not measured.`
+      : [
+          `Looked at ${sessions.length} conversations from the last ${days} days (${sessions.flat().length} requests).`,
+          '',
+          'Soft limit   Tokens read past it   Conversations that reached it',
+          ...rows.map(row => `${K(row.limit).padEnd(13)}${`${row.saved}%`.padEnd(22)}${row.reached}%`),
+          '',
+          'Tokens read past a limit are what a compaction there could have spared. A lower limit spares more and interrupts more conversations.',
+        ].join('\n')
+  // The dialog takes four choices: the suggestion and the three limits nearest it. Any other is typed under "Other".
+  const others = rows
+    .map(row => row.limit)
+    .filter(limit => limit !== best)
+    .sort((a, b) => Math.abs(a - best) - Math.abs(b - best))
+    .slice(0, 3)
+    .sort((a, b) => a - b)
+  $.ui.log(report) // shown while the question is up; the answer below repeats it for the record
+  const answer = await $.ui
+    .ask('Where should the soft limit be?', {
+      header: 'Soft limit',
+      options: [`${K(best)} (suggested)`, ...(others.length > 0 ? others.map(K) : [K(best - 50_000)])],
+    })
+    .catch(() => undefined)
+  const soft = answer === undefined ? NaN : tokensIn(answer)
+
+  if (answer === undefined) {
+    return `${report}\n\nNothing was changed. Run /pocketbook setup again to pick a soft limit.`
+  }
+
+  if (!(soft >= 50_000 && soft < before.ceiling)) {
+    return `${report}\n\nNothing was changed: the soft limit has to be between 50K and ${K(before.ceiling)}.`
+  }
+
+  const picked = confFor(sessions, soft, before.ceiling)
+  await $.store.set('conf', picked)
+  await update($, conf, () => picked)
+  await writeList($, TODO, await readList($, TODO))
+  await writeList($, BACKLOG, await readList($, BACKLOG))
+  const { passed } = hardLimit(sessions, soft, before.ceiling)
+
+  return [
+    report,
+    '',
+    `Soft limit ${K(picked.soft)}, hard limit ${K(picked.hard)}.`,
+    passed === 0
+      ? `No conversation passed ${K(picked.soft)}, so the hard limit is 50K over it.`
+      : `${passed} conversations passed ${K(picked.soft)}; 80% of them peaked at or under ${K(picked.hard)}.`,
+    `  lite   notes at ${K(picked.soft)}, never compacts`,
+    `  auto   notes at ${K(picked.soft)}, compacts at ${K(picked.hard)}`,
+    `  ultra  notes at ${K(picked.ultraSoft)}, compacts at ${K(picked.ultraHard)}`,
+    `The todo list is ${TODO}, the backlog ${BACKLOG}.`,
+  ].join('\n')
+}
+
 const USAGE = `Pocketbook commands:
   setup               pick the limits from your own history
   mode::<name>        off, lite, auto or ultra
@@ -87,6 +193,10 @@ async function run($: any, args: string): Promise<string> {
     await setMode($, picked)
 
     return `The mode is now ${picked}.`
+  }
+
+  if (word === 'setup') {
+    return setup($, rest)
   }
 
   if (word === 'backlog') {

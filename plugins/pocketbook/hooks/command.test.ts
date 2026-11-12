@@ -61,3 +61,45 @@ test('anything else lists the commands', async ($, on) => {
 
   expect(await pocketbook($, 'help')).toContain('todo -add <text>')
 })
+
+test('setup reads the history, asks for the soft limit and keeps the limits it works out', async ($, on) => {
+  const { files, kept } = world(on)
+  let asked: unknown
+  on('env.get', (_: unknown, e: { name: string }) => ({ value: e.name === 'HOME' ? '/home/me' : undefined }))
+  on('clock.now', () => ({ value: 20 * 86_400_000 }))
+  on('fs.list', (_: unknown, e: { path: string }) => ({
+    value: e.path.endsWith('projects')
+      ? [{ name: 'proj', kind: 'dir', size: 0, mtimeMs: 0, isLink: false }]
+      : [
+          { name: 'new.jsonl', kind: 'file', size: 10, mtimeMs: 19 * 86_400_000, isLink: false },
+          { name: 'old.jsonl', kind: 'file', size: 10, mtimeMs: 86_400_000, isLink: false }, // older than 14 days
+        ],
+  }))
+  on('process.run', (_: unknown, e: { argv: string[] }) => {
+    expect(e.argv.slice(-2)).toEqual(['--', 'proj/new.jsonl'])
+
+    return {
+      value: {
+        exitCode: 0,
+        stderr: '',
+        stdout: ['"id":"msg_1"', '"input_tokens":120000', '"id":"msg_2"', '"input_tokens":230000'].map((m, i) => `proj/new.jsonl:${i >> 1}:${m}`).join('\n'),
+      },
+    }
+  })
+  on('ui.log', () => ({ value: undefined }))
+  // The question is the engine's own AskUserQuestion call; the person picks 200K.
+  on('tool.call', (_: unknown, e: { questions: Array<{ question: string }> }) => {
+    asked = e
+
+    return { result: { questions: e.questions, answers: { [e.questions[0]!.question]: '200K' } } }
+  })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  const text = await pocketbook($, 'setup')
+
+  expect(JSON.stringify(asked)).toContain('200K')
+  expect(text).toContain('Looked at 1 conversations from the last 14 days (2 requests).')
+  expect(text).toContain('Soft limit 200K, hard limit 250K.')
+  expect(kept.conf).toEqual({ ceiling: 800_000, soft: 200_000, hard: 250_000, ultraSoft: 150_000, ultraHard: 250_000, isSetUp: true })
+  expect(files['.pocketbook/todo.md']).toBe('# Pocketbook todo\n\n')
+})
