@@ -1,22 +1,21 @@
 import { expect, test } from 'claude-code/testing'
 
 const SLOT = { plugin: 'pocketbook', component: 'SessionMode', surface: 'terminal', props: { modes: [] as string[] } } as const
+const CONF = { ceiling: 300_000, soft: 225_000, hard: 300_000, ultraSoft: 175_000, ultraHard: 250_000, isSetUp: false }
 
-// What the session had stored: the last context size, in tokens.
-const stored = (tokens: number | null) => () => ({ value: { value: tokens === null ? null : { tokens }, version: 1 } })
+// What the session had stored, by key: the last context size and the limits.
+const stored = (state: Record<string, unknown>) => (_: unknown, e: { key: string }) => ({ value: { value: state[e.key], version: 1 } })
 
 const cases = [
-  { tokens: 60_000, text: 'Context high (80% remaining)' },
-  { tokens: 90_000, text: 'Context high (70% remaining)' }, // 70% is still high
-  { tokens: 93_000, text: 'Context medium (69% remaining)' }, // just under 70
-  { tokens: 195_000, text: 'Context medium (35% remaining)' }, // 35% is still medium
-  { tokens: 198_000, text: 'Context low (34% remaining)' }, // just under 35
-  { tokens: 450_000, text: 'Context low (0% remaining)' }, // past the window: 0, never negative
+  { tokens: 60_000, text: 'Context high 60K of 300K' },
+  { tokens: 93_000, text: 'Context medium 93K of 300K' }, // just under 70% left
+  { tokens: 198_000, text: 'Context low 198K of 300K' }, // just under 35% left
+  { tokens: 450_000, text: 'Context low 450K of 300K' }, // past the limit
 ]
 
 for (const c of cases) {
   test(`${c.tokens} tokens reads "${c.text}"`, async ($, on) => {
-    on('state.get', stored(c.tokens))
+    on('state.get', stored({ meter: { tokens: c.tokens }, conf: CONF }))
     on('ui.render', ($, e) => {
       const { Text } = $.ui.resolve(e)
 
@@ -31,7 +30,7 @@ for (const c of cases) {
 }
 
 test('nothing is drawn before the first reply, and the engine draws the footer', async ($, on) => {
-  on('state.get', stored(null))
+  on('state.get', stored({ meter: null, conf: CONF }))
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
 
@@ -41,4 +40,22 @@ test('nothing is drawn before the first reply, and the engine draws the footer',
 
   expect((await ui.find({ type: 'Text' }))?.text).toBe('engine')
   await ui.unmount()
+})
+
+test('the first session works the limits out from the compaction window and keeps them', async ($, on) => {
+  const kept: Record<string, unknown> = {}
+  on('store.get', () => ({ value: undefined }))
+  on('store.set', (_, e) => {
+    kept[e.key] = e.value
+
+    return { value: undefined }
+  })
+  on('session.usage', () => ({
+    value: { startedAt: 0, rateLimits: [], context: { window: 1_000_000, breakdown: { rawMaxTokens: 300_000, autocompactSource: 'env' } } },
+  }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  expect(kept.conf).toEqual(CONF)
 })
