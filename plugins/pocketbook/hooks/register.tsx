@@ -80,7 +80,9 @@ async function afterCompact($: any) {
     .catch(() => undefined)
 }
 
-// Compacts now; false when the engine would not (a turn is still running, or a hook refused).
+// Compacts now; false when the engine would not (a turn is still running, or a hook refused). Only ever asked for between replies:
+// a quarter second after the main conversation's turn has completed, or before a prompt typed while idle enters. The engine itself
+// rejects the call while a turn runs, so a reply is never compacted under way.
 async function compactNow($: any) {
   const done = await $.session.compact({ instructions: `Open work is listed in ${TODO}; say that it is there.` }).catch(() => undefined)
 
@@ -427,7 +429,11 @@ export const register: Register = on => {
         return { drop: HELD + (await todoText($)) }
       }
 
-      await compactNow($) // the background work ended without a word: compact first, then answer
+      // The background work ended without a word: compact first, then answer. Never for a prompt typed over a running reply
+      // (`turnId`): that reply is compacted when it ends.
+      if (e.turnId === undefined) {
+        await compactNow($)
+      }
     }
 
     const past = e.command === undefined ? await pastSoft($) : undefined

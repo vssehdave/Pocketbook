@@ -132,3 +132,13 @@ test('a compaction the person asks for is never refused, and hands the todo list
   await clock.settle() // the hand-over is a prompt of its own, sent without waiting
   expect(seen.prompts.at(-1)).toContain('write the docs [1]')
 })
+
+test('a reply is never compacted under way: not at a tool call, not when a subagent finishes', async ($, on) => {
+  const { seen, clock } = await session($, on, 'auto')
+
+  await $.tool.call({ tool: 'Read', file_path: 'a.txt' }) // past the hard limit, mid-reply
+  await $.turn.complete({ ...TURN, agentId: 'sub1' }) // a subagent finishing inside the reply
+  await clock.advance(1000)
+
+  expect(seen.compactions).toBe(0)
+})
