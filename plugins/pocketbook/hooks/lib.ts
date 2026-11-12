@@ -9,7 +9,7 @@ const STEP = 25_000
 const SHADES = {
   high: { light: '#a8dba8', base: 'green', dark: '#6b8e23' }, // olive
   medium: { light: '#e6d28f', base: '#cfae4f', dark: '#b8860b' }, // dark goldenrod
-  low: { light: '#e5a3a0', base: '#cc6a64', dark: '#9b1b30' }, // blood crimson
+  low: { light: '#e5a3a0', base: '#d9544e', dark: '#9b1b30' }, // blood crimson
 }
 
 // Bands of what is left: 70% or more is high, 35 to 69 medium, under 35 low.

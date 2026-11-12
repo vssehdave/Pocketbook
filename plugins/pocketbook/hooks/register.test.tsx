@@ -99,7 +99,7 @@ const shades = [
   ['auto', 93_000, '#cfae4f'],
   ['ultra', 93_000, '#b8860b'],
   ['lite', 240_000, '#e5a3a0'],
-  ['auto', 240_000, '#cc6a64'],
+  ['auto', 240_000, '#d9544e'],
   ['ultra', 240_000, '#9b1b30'],
 ] as const
 
