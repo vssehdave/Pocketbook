@@ -5,7 +5,7 @@
     {
       "name": "pocketbook",
       "source": "./plugins/pocketbook",
-      "description": "Shows how much context is left at the right of the prompt footer: high (green), medium (yellow), low (red)."
+      "description": "Context limits from your own history: a footer meter, a soft limit that holds large tasks on a todo list, and compaction at a hard limit."
     }
   ]
 }
