@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { K, band, ceilingOf, defaults, leftOf, limitsOf, rule, softNote } from './lib'
+import { K, band, modeColor, usedText, ceilingOf, defaults, leftOf, limitsOf, rule, softNote } from './lib'
 
 test('tokens read in thousands', () => {
   expect(K(123_456)).toBe('123K')
@@ -35,4 +35,10 @@ test('past the soft limit the note and the rule give the room left and a third o
   expect(rule(250_000, 300_000, 'todo.md')).toContain('about 50K are left')
   expect(rule(250_000, 300_000, 'todo.md')).toContain('about 17K tokens')
   expect(rule(310_000, 300_000, 'todo.md')).toContain('about 0K are left')
+})
+
+test('the size reads in tokens or as a percent, and a mode takes its shade of the band', () => {
+  expect(usedText(69_000, 300_000, 'tokens')).toBe('69K used of 300K')
+  expect(usedText(69_000, 300_000, 'percent')).toBe('23% used')
+  expect(['off', 'lite', 'auto', 'ultra'].map(m => modeColor(m as 'off', 'low'))).toEqual(['#bdbdbd', '#e5a3a0', '#cc6a64', '#9b1b30'])
 })

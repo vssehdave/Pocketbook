@@ -1,17 +1,31 @@
-import type { Conf, Mode } from '../types'
+import type { Conf, Mode, Units } from '../types'
 
 // 123456 reads "123K".
 export const K = (tokens: number) => `${Math.round(tokens / 1000)}K`
 
 const STEP = 25_000
 
+// Three shades per band: the footer's own colour (muted yellow and red), a lighter one for lite and a darker one for ultra.
+const SHADES = {
+  high: { light: '#a8dba8', base: 'green', dark: '#6b8e23' }, // olive
+  medium: { light: '#e6d28f', base: '#cfae4f', dark: '#b8860b' }, // dark goldenrod
+  low: { light: '#e5a3a0', base: '#cc6a64', dark: '#9b1b30' }, // blood crimson
+}
+
 // Bands of what is left: 70% or more is high, 35 to 69 medium, under 35 low.
-export const band = (left: number) =>
-  left >= 70
-    ? { name: 'high', color: 'green' }
-    : left >= 35
-      ? { name: 'medium', color: 'yellow' }
-      : { name: 'low', color: 'red' }
+export const band = (left: number) => {
+  const name = left >= 70 ? 'high' : left >= 35 ? 'medium' : 'low'
+
+  return { name, color: SHADES[name].base }
+}
+
+// The colour of a mode's name when it is the chosen one: off is always grey, the others follow the footer's band.
+export const modeColor = (mode: Mode, name: 'high' | 'medium' | 'low') =>
+  mode === 'off' ? '#bdbdbd' : mode === 'lite' ? SHADES[name].light : mode === 'auto' ? SHADES[name].base : SHADES[name].dark
+
+// How much is used, as the footer words it: "69K used of 300K", or "23% used" in percent.
+export const usedText = (tokens: number, limit: number, units: Units) =>
+  units === 'percent' ? `${Math.round((tokens / limit) * 100)}% used` : `${K(tokens)} used of ${K(limit)}`
 
 // What is left of the limit as a whole percentage, never negative.
 export const leftOf = (tokens: number, limit: number) => Math.max(0, Math.round(100 - (tokens / limit) * 100))

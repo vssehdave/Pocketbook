@@ -1,8 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { Conf, Meter, Mode } from '../types'
-import { K, MODES, band, ceilingOf, defaults, isMode, leftOf, limitsOf, rule, softNote } from './lib'
+import type { Conf, Meter, Mode, Units } from '../types'
+import { K, MODES, band, ceilingOf, defaults, isMode, leftOf, limitsOf, modeColor, rule, softNote, usedText } from './lib'
 import { PATTERN, confFor, hardLimit, sizesOf, suggested, table, tokensIn } from './analysis'
 import { BACKLOG, TODO, listing, parse, pick, serialize, summaryOf } from './todo'
 import type { Item } from './todo'
@@ -10,6 +10,7 @@ import type { Item } from './todo'
 const meter = atom({ plugin: 'pocketbook', key: 'meter' } as const, null as Meter)
 const conf = atom({ plugin: 'pocketbook', key: 'conf' } as const, null as Conf | null)
 const mode = atom({ plugin: 'pocketbook', key: 'mode' } as const, 'auto' as Mode)
+const units = atom({ plugin: 'pocketbook', key: 'units' } as const, 'tokens' as Units)
 // Whether the footer shows the four modes to pick from, in place of the meter.
 const isModesOpen = atom({ plugin: 'pocketbook', key: 'isModesOpen' } as const, false)
 
@@ -279,6 +280,7 @@ async function setup($: any, typed: string): Promise<string> {
 
 const USAGE = `Pocketbook commands:
   setup               pick the limits from your own history
+  setup -units [tokens|%]  switch the footer between tokens and percent
   mode::<name>        off, lite, auto or ultra
   todo                show the todo list
   todo -add <text>    add to it
@@ -303,6 +305,16 @@ async function run($: any, args: string): Promise<string> {
     await setMode($, picked)
 
     return `The mode is now ${picked}.`
+  }
+
+  if (word === 'setup' && restWords[0] === '-units') {
+    const asked = restWords[1] === undefined ? undefined : restWords[1] === '%' ? 'percent' : restWords[1]
+    const next = asked === 'tokens' || asked === 'percent' ? asked : (await read($, units)) === 'tokens' ? 'percent' : 'tokens'
+
+    await $.store.set('units', next)
+    await update($, units, () => next)
+
+    return `The footer now shows ${next}.`
   }
 
   if (word === 'setup') {
@@ -377,12 +389,14 @@ async function loadConf($: any) {
 
   const picked = await $.store.get('mode')
   await update($, mode, () => (isMode(picked) ? picked : 'auto'))
+  const unit = (await $.store.get('units')) === 'percent' ? 'percent' : 'tokens'
+  await update($, units, () => unit)
 }
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
-    await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | mode::<name> | todo | backlog | stash <n> | archive]' })
+    await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | setup -units | mode::<name> | todo | backlog | stash <n> | archive]' })
     await loadConf($)
     // Pocketbook compacts by its own limits, so Claude Code's own automatic compaction is turned off; a refusal (a managed setting) is left be.
     await $.config.set({ key: 'autoCompact', value: false }).catch(() => undefined)
@@ -496,6 +510,7 @@ export const register: Register = on => {
     const current = await read($, mode)
     const { shown } = limitsOf(limits, current)
     const { name, color } = band(leftOf(m?.tokens ?? 0, shown))
+    const unit = (await read($, units)) === 'percent' ? 'percent' : 'tokens'
     const { Box, Button, Text } = $.ui.resolve(e)
 
     if (await read($, isModesOpen)) {
@@ -504,7 +519,7 @@ export const register: Register = on => {
           {await next(e)}
           {MODES.map(one => (
             <Button key={`mode:${one}`} plain onPress={() => setMode($, one)}>
-              {one === current ? <Text>{`[ ${one} ]`}</Text> : <Text dimColor>{one}</Text>}
+              {one === current ? <Text color={modeColor(one, name as 'high' | 'medium' | 'low')}>{`[ ${one} ]`}</Text> : <Text dimColor>{one}</Text>}
             </Button>
           ))}
           <Button key="close" plain onPress={() => update($, isModesOpen, () => false)}>
@@ -517,13 +532,9 @@ export const register: Register = on => {
     // Off measures nothing against a limit, so it gives the size alone; the meter waits for the first reply either way.
     const size =
       m === null ? null : current === 'off' ? (
-        <Text>
-          ~{K(m.tokens)} tokens of {K(shown)} tokens
-        </Text>
+        <Text>{unit === 'percent' ? `~${usedText(m.tokens, shown, unit)}` : `~${K(m.tokens)} tokens of ${K(shown)} tokens`}</Text>
       ) : (
-        <Text color={color}>
-          Context {name} {K(m.tokens)} of {K(shown)}
-        </Text>
+        <Text color={color}>{`Context ${name} (${usedText(m.tokens, shown, unit)})`}</Text>
       )
 
     return (

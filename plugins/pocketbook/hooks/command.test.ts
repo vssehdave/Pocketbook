@@ -55,6 +55,17 @@ test('mode:: changes the mode and keeps it', async ($, on) => {
   expect(await pocketbook($, 'mode::loud')).toBe('The mode is ultra. Pick one of: off, lite, auto, ultra.')
 })
 
+test('setup -units toggles between tokens and percent, or sets one, and keeps it', async ($, on) => {
+  const { kept } = world(on)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  expect(await pocketbook($, 'setup -units')).toBe('The footer now shows percent.')
+  expect(kept.units).toBe('percent')
+  expect(await pocketbook($, 'setup -units')).toBe('The footer now shows tokens.')
+  expect(await pocketbook($, 'setup -units %')).toBe('The footer now shows percent.')
+  expect(await pocketbook($, 'setup -units tokens')).toBe('The footer now shows tokens.')
+})
+
 test('anything else lists the commands', async ($, on) => {
   world(on)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
