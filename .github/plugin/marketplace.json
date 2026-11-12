@@ -1,0 +1,11 @@
+{
+  "name": "pocketbook",
+  "owner": { "name": "Veertej Sehdave" },
+  "plugins": [
+    {
+      "name": "pocketbook",
+      "source": "./plugins/pocketbook-portable",
+      "description": "A todo list and backlog for long conversations, kept in .pocketbook/."
+    }
+  ]
+}

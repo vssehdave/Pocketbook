@@ -1,0 +1,12 @@
+{
+  "name": "pocketbook",
+  "interface": { "displayName": "Pocketbook" },
+  "plugins": [
+    {
+      "name": "pocketbook",
+      "source": { "source": "local", "path": "./plugins/pocketbook-portable" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}

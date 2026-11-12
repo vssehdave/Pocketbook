@@ -1,0 +1,24 @@
+{
+  "name": "pocketbook",
+  "version": "0.3.0",
+  "description": "A todo list and backlog for long conversations. Type pb todo -add <text> at any time, even mid-reply or with usage used up, and the item waits on the list until the agent gets to it.",
+  "author": {
+    "name": "Veertej Sehdave",
+    "url": "https://github.com/vssehdave"
+  },
+  "homepage": "https://github.com/vssehdave/Pocketbook",
+  "repository": "https://github.com/vssehdave/Pocketbook",
+  "license": "MIT",
+  "keywords": ["todo", "backlog", "context", "queue"],
+  "skills": "./skills/",
+  "hooks": "./hooks/codex.json",
+  "interface": {
+    "displayName": "Pocketbook",
+    "shortDescription": "A todo list that waits for you",
+    "longDescription": "Keeps a todo list and a backlog in .pocketbook/. Type pb todo -add <text> any time, even while a reply is running or after your usage runs out; it is answered locally, without the model, and the agent picks the item up when it is done.",
+    "developerName": "Veertej Sehdave",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "defaultPrompt": ["Show my todo list", "Add this to my todo list", "Work through my todo list"]
+  }
+}

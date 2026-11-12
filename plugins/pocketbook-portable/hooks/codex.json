@@ -1,0 +1,29 @@
+{
+  "description": "Pocketbook: answers pb todo commands without the model, and hands todo items added mid-reply to the agent when the reply ends.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/scripts/pocketbook.mjs\" hook prompt codex",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\pocketbook.mjs\" hook prompt codex",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/scripts/pocketbook.mjs\" hook stop codex",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\pocketbook.mjs\" hook stop codex",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

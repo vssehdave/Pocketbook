@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "BeforeAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "pocketbook-prompt",
+            "command": "node \"${extensionPath}/scripts/pocketbook.mjs\" hook prompt gemini",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "AfterAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "pocketbook-stop",
+            "command": "node \"${extensionPath}/scripts/pocketbook.mjs\" hook stop gemini",
+            "timeout": 10000
+          }
+        ]
+      }
+    ]
+  }
+}
