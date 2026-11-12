@@ -38,7 +38,50 @@ test('nothing is drawn before the first reply, and the engine draws the footer',
   })
   const ui = await $.ui.mount(SLOT)
 
-  expect((await ui.find({ type: 'Text' }))?.text).toBe('engine')
+  expect((await ui.find({ type: 'Text', text: /engine/ }))?.text).toBe('engine')
+  expect(await ui.find({ type: 'Text', text: /Context/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('off mode gives the size alone', async ($, on) => {
+  on('state.get', stored({ meter: { tokens: 120_000 }, conf: CONF, mode: 'off' }))
+  const ui = await $.ui.mount(SLOT)
+
+  expect((await ui.find({ type: 'Text', text: /tokens/ }))?.text).toBe('~120K tokens of 300K tokens')
+  await ui.unmount()
+})
+
+test('ultra measures against its own hard limit', async ($, on) => {
+  on('state.get', stored({ meter: { tokens: 120_000 }, conf: CONF, mode: 'ultra' }))
+  const ui = await $.ui.mount(SLOT)
+
+  expect((await ui.find({ type: 'Text', text: /Context/ }))?.text).toBe('Context medium 120K of 250K')
+  await ui.unmount()
+})
+
+test('the mode button opens the four modes, a press picks one and keeps it, and [-] goes back', async ($, on) => {
+  const kept: Record<string, unknown> = { conf: CONF }
+  on('store.get', (_, e) => ({ value: kept[e.key] }))
+  on('store.set', (_, e) => {
+    kept[e.key] = e.value
+
+    return { value: undefined }
+  })
+  on('session.usage', () => ({ value: { startedAt: 0, rateLimits: [], context: { window: 1_000_000, tokens: 60_000 } } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount(SLOT)
+
+  expect((await ui.find({ type: 'Text', text: /Context/ }))?.text).toBe('Context high 60K of 300K')
+  await ui.press({ key: 'mode' })
+  expect((await ui.find({ type: 'Text', text: /auto/ }))?.text).toBe('[ auto ]')
+
+  await ui.press({ key: 'mode:lite' })
+  expect((await ui.find({ type: 'Text', text: /lite/ }))?.text).toBe('[ lite ]')
+  expect(kept.mode).toBe('lite')
+
+  await ui.press({ key: 'close' })
+  expect((await ui.find({ type: 'Text', text: /Context/ }))?.text).toBe('Context high 60K of 300K')
   await ui.unmount()
 })
 
