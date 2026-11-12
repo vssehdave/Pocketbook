@@ -53,15 +53,21 @@ export const sizesOf = (stdout: string, into: Map<string, number[]> = new Map())
 
 export type Row = { limit: number; saved: number; reached: number }
 
-// For each soft limit from 150K up in 50K steps, under the ceiling: `saved` is the share of all tokens read that were read while the
-// conversation was past that limit, and `reached` the share of conversations that got there. Both whole percentages.
+// What a conversation is taken to hold right after a compaction: the summary and the fixed prompt. shortcut: a constant, measure it
+// from the transcripts' own compactions if the table needs to be closer.
+const COMPACTED = 30_000
+
+// For each soft limit from 150K up in 50K steps, under the ceiling: `saved` is the share of all tokens read that compacting at that
+// limit would have spared, and `reached` the share of conversations that got there. Both whole percentages. A request past the limit
+// is counted as if each stretch of growth from the compacted size up to the limit had been cut away before it.
 export const table = (sessions: readonly number[][], ceiling: number): Row[] => {
   const all = sessions.flat()
   const total = all.reduce((sum, size) => sum + size, 0)
   const rows: Row[] = []
 
   for (let limit = 150_000; limit < ceiling; limit += 50_000) {
-    const above = all.reduce((sum, size) => (size > limit ? sum + size : sum), 0)
+    const stretch = limit - COMPACTED
+    const above = all.reduce((sum, size) => (size > limit ? sum + Math.floor((size - COMPACTED) / stretch) * stretch : sum), 0)
     const reached = sessions.filter(sizes => sizes.some(size => size >= limit)).length
 
     rows.push({
