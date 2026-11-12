@@ -9,13 +9,11 @@ A footer meter, context limits picked from your own history, and a todo list tha
 
 ## Install
 
-Both are in the `library` marketplace.
-
 **Claude Code**
 
 ```
-/plugin marketplace add vssehdave/library
-/plugin install pocketbook@library
+/plugin marketplace add vssehdave/Pocketbook
+/plugin install pocketbook@pocketbook
 ```
 
 Then run `/pocketbook setup` once to pick your limits.
@@ -23,8 +21,8 @@ Then run `/pocketbook setup` once to pick your limits.
 **Codex**
 
 ```
-codex plugin marketplace add vssehdave/library
-codex plugin add pocketbook@library
+codex plugin marketplace add vssehdave/Pocketbook
+codex plugin add pocketbook@pocketbook
 ```
 
 Open `/hooks` in Codex and trust the two Pocketbook hooks; Codex skips hooks it has not been told to trust.
@@ -32,8 +30,8 @@ Open `/hooks` in Codex and trust the two Pocketbook hooks; Codex skips hooks it 
 **Copilot CLI**
 
 ```
-copilot plugin marketplace add vssehdave/library
-copilot plugin install pocketbook@library
+copilot plugin marketplace add vssehdave/Pocketbook
+copilot plugin install pocketbook@pocketbook
 ```
 
 **Gemini CLI**: from a clone of this repository,
@@ -42,7 +40,7 @@ copilot plugin install pocketbook@library
 gemini extensions link plugins/pocketbook-portable
 ```
 
-From a local clone, any marketplace command above also takes the path of this folder in place of `vssehdave/library`, and the plugin is then `pocketbook@pocketbook`.
+From a local clone, use the path of this folder in place of `vssehdave/Pocketbook`.
 
 ## What each agent gets
 
