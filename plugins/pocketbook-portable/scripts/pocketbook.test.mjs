@@ -17,10 +17,10 @@ test('the todo list is added to, stashed, removed from and archived', () => {
   run(cwd, 'todo -add second task')
   assert.equal(run(cwd, 'todo -add third task'), 'Added. The todo list:\nfirst task [1]\nsecond task [2]\nthird task [3]')
   assert.equal(readFileSync(join(cwd, '.gitignore'), 'utf8'), '.pocketbook/\n')
-  assert.equal(run(cwd, 'stash 2'), 'Moved to the backlog: second task')
-  assert.equal(run(cwd, 'todo -remove 1'), 'Removed: first task')
+  assert.equal(run(cwd, 'stash 2'), 'Moved to the backlog: second task\nThe todo list:\nfirst task [1]\nthird task [2]')
+  assert.equal(run(cwd, 'todo -remove 1'), 'Removed: first task\nThe todo list:\nthird task [1]')
   assert.equal(run(cwd, 'todo -remove 5'), 'Give the number of an item, 1 to 1.')
-  assert.equal(run(cwd, 'archive'), 'Moved 1 to the backlog.')
+  assert.equal(run(cwd, 'archive'), 'Moved 1 to the backlog.\nThe todo list is empty.')
   assert.equal(run(cwd, 'backlog'), 'second task [1]\nthird task [2]')
 })
 

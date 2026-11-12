@@ -4,7 +4,7 @@ import type { Register } from 'claude-code'
 import type { Conf, Meter, Mode, Units } from '../types'
 import { K, MODES, band, ceilingOf, defaults, isMode, leftOf, limitsOf, modeColor, rule, softNote, usedText } from './lib'
 import { PATTERN, confFor, hardLimit, sizesOf, suggested, table, tokensIn } from './analysis'
-import { BACKLOG, TODO, listing, parse, pick, serialize, summaryOf } from './todo'
+import { BACKLOG, TODO, listing, parse, pick, serialize, shown, summaryOf } from './todo'
 import type { Item } from './todo'
 
 const meter = atom({ plugin: 'pocketbook', key: 'meter' } as const, null as Meter)
@@ -65,11 +65,28 @@ async function isBusy($: any) {
   return agents.some(agent => agent.status === 'pending' || agent.status === 'running' || agent.status === 'waiting')
 }
 
+// $.ui.log appends one line, and the engine turns a line break in its text into a replacement character, so a text of several lines is
+// logged a row at a time.
+function say($: any, text: string) {
+  for (const line of text.split(/\r?\n/)) {
+    if (line.trim() !== '') {
+      $.ui.log(line)
+    }
+  }
+}
+
 // The todo list as the person is shown it under a message; nothing when it is empty.
 async function todoText($: any) {
   const items = await readList($, TODO)
 
   return items.length === 0 ? '' : `\n\nTodo:\n${listing(items)}`
+}
+
+// The same list on one line, for a prompt that is dropped: the engine turns a line break in a drop's text into a replacement character.
+async function todoInline($: any) {
+  const items = await readList($, TODO)
+
+  return items.length === 0 ? '' : ` Todo: ${items.map((item, at) => `${item.summary} [${at + 1}]`).join('; ')}`
 }
 
 // After a compaction or a clear of the main conversation: nothing is held any more, and what is on the todo list is shown and
@@ -84,7 +101,7 @@ async function afterCompact($: any) {
     return
   }
 
-  $.ui.log(`Todo:\n${listing(items)}`)
+  say($, `Todo:\n${listing(items)}`)
   // Not awaited: the prompt starts a turn of its own once the session is idle, which is after this hook has returned.
   void $.prompt
     .submit({
@@ -115,7 +132,7 @@ async function atHardLimit($: any) {
   await note($)
 
   if (await isBusy($)) {
-    $.ui.log(HELD + (await todoText($)))
+    say($, HELD + (await todoText($)))
   } else {
     $.clock.after(250, () => void compactNow($))
   }
@@ -200,7 +217,7 @@ async function handBack($: any) {
   const items = await readList($, TODO)
 
   if ((await read($, usage)) >= OUT) {
-    $.ui.log(`Usage is used up. What you add stays on the todo list and is picked up with your next prompt after it resets.\n\n${listing(items)}`)
+    say($, `Usage is used up. What you add stays on the todo list and is picked up with your next prompt after it resets.\n\n${listing(items)}`)
 
     return
   }
@@ -250,6 +267,22 @@ async function history($: any, days: number): Promise<number[][]> {
   return [...sizes.values()]
 }
 
+// Claude Code measures its own "Context low" warning against CLAUDE_CODE_AUTO_COMPACT_WINDOW when that is set. With its own auto-compact
+// off the warning is red and no plugin can hide it, so the person is told where it comes from and how to move it out of the way.
+async function windowNote($: any) {
+  const size = await $.env.get('CLAUDE_CODE_AUTO_COMPACT_WINDOW')
+
+  if (!size) {
+    return ''
+  }
+
+  const { context } = await $.session.usage({ breakdown: 'summary' }).catch(() => ({ context: {} as { breakdown?: { isAutoCompactEnabled: boolean } } }))
+
+  return context.breakdown?.isAutoCompactEnabled === false
+    ? `Claude Code is set to measure against a ${size} window (CLAUDE_CODE_AUTO_COMPACT_WINDOW) and its own auto-compact is off, so it shows a red "Context low" warning from about 80% of that. Pocketbook cannot hide it. Remove the setting from the env block of settings.json and restart Claude Code to move the warning out to the model's full window.`
+    : ''
+}
+
 // /pocketbook setup: shows what each soft limit would have saved over the person's own history, lets them pick one, and works the
 // hard limits out from where their conversations went after it.
 async function setup($: any, typed: string): Promise<string> {
@@ -258,7 +291,7 @@ async function setup($: any, typed: string): Promise<string> {
   const sessions = await history($, days).catch(() => [] as number[][])
   const rows = table(sessions, before.ceiling)
   const best = suggested(rows) ?? before.soft
-  const report =
+  const summary =
     sessions.length === 0
       ? `Found no conversations from the last ${days} days to learn from (git is needed to read them), so the choices below are not measured.`
       : [
@@ -269,6 +302,8 @@ async function setup($: any, typed: string): Promise<string> {
           '',
           'Tokens saved is the share of everything read that compacting at that limit would have spared, taking a compacted conversation as 30K. A lower limit saves more and interrupts more conversations.',
         ].join('\n')
+  const note = await windowNote($)
+  const report = note === '' ? summary : `${summary}\n\n${note}`
   // The dialog takes four choices: the suggestion and the three limits nearest it. Any other is typed under "Other".
   const others = rows
     .map(row => row.limit)
@@ -276,7 +311,7 @@ async function setup($: any, typed: string): Promise<string> {
     .sort((a, b) => Math.abs(a - best) - Math.abs(b - best))
     .slice(0, 3)
     .sort((a, b) => a - b)
-  $.ui.log(report) // shown while the question is up; the answer below repeats it for the record
+  say($, report) // shown while the question is up; the answer below repeats it for the record
   const answer = await $.ui
     .ask('Where should the soft limit be?', {
       header: 'Soft limit',
@@ -376,7 +411,7 @@ async function run($: any, args: string): Promise<string> {
 
     await addTodo($, text)
 
-    return `Added. The todo list:\n${listing(await readList($, TODO))}`
+    return `Added. ${shown(await readList($, TODO))}`
   }
 
   const isRemove = word === 'todo' && restWords[0] === '-remove'
@@ -392,9 +427,10 @@ async function run($: any, args: string): Promise<string> {
       await writeList($, BACKLOG, [...(await readList($, BACKLOG)), items[at]!])
     }
 
-    await writeList($, TODO, items.filter((_, i) => i !== at))
+    const left = items.filter((_, i) => i !== at)
+    await writeList($, TODO, left)
 
-    return `${isRemove ? 'Removed' : 'Moved to the backlog'}: ${items[at]!.summary}`
+    return `${isRemove ? 'Removed' : 'Moved to the backlog'}: ${items[at]!.summary}\n${shown(left)}`
   }
 
   if (word === 'archive') {
@@ -405,7 +441,7 @@ async function run($: any, args: string): Promise<string> {
     await writeList($, BACKLOG, [...(await readList($, BACKLOG)), ...items])
     await writeList($, TODO, [])
 
-    return `Moved ${items.length} to the backlog.`
+    return `Moved ${items.length} to the backlog.\n${shown([])}`
   }
 
   return USAGE
@@ -464,7 +500,7 @@ export const register: Register = on => {
     if (near.length > 0) {
       await update($, warned, ids => [...ids, ...near.map(limit => `${limit.kind}:${limit.resetsAt}`)])
       const worst = near.reduce((a, b) => (b.percentUsed > a.percentUsed ? b : a))
-      $.ui.log(`Usage is at ${Math.round(worst.percentUsed)}% of the ${worst.kind.replace('_', '-')} limit. /pocketbook todo -add keeps working when it runs out; what you add waits on the list.${(await todoText($)) || '\n\nThe todo list is empty.'}`)
+      say($, `Usage is at ${Math.round(worst.percentUsed)}% of the ${worst.kind.replace('_', '-')} limit. /pocketbook todo -add keeps working when it runs out; what you add waits on the list.${(await todoText($)) || '\n\nThe todo list is empty.'}`)
     }
 
     return result
@@ -504,7 +540,7 @@ export const register: Register = on => {
           await addTodo($, e.text)
         }
 
-        return { drop: HELD + (await todoText($)) }
+        return { drop: HELD + (await todoInline($)) }
       }
 
       // The background work ended without a word: compact first, then answer. Never for a prompt typed over a running reply

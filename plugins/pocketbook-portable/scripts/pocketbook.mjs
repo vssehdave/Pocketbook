@@ -37,6 +37,9 @@ export const summaryOf = text => {
 
 export const listing = items => items.map((item, at) => `${item.summary} [${at + 1}]`).join('\n')
 
+// What the person is shown after a change: the todo list as it now stands.
+const shown = items => (items.length === 0 ? 'The todo list is empty.' : `The todo list:\n${listing(items)}`)
+
 const pick = (items, typed) => {
   const at = /^\d+$/.test(typed) ? Number(typed) - 1 : -1
 
@@ -105,7 +108,7 @@ export function run(cwd, args) {
     save(cwd, 'todo.md', [...items, { summary: summaryOf(text), full: text }])
     mark(cwd, 'added')
 
-    return `Added. The todo list:\n${listing(list(cwd, 'todo.md'))}`
+    return `Added. ${shown(list(cwd, 'todo.md'))}`
   }
 
   const isRemove = word === 'todo' && words[0] === '-remove'
@@ -121,9 +124,10 @@ export function run(cwd, args) {
       save(cwd, 'backlog.md', [...list(cwd, 'backlog.md'), items[at]])
     }
 
-    save(cwd, 'todo.md', items.filter((_, i) => i !== at))
+    const left = items.filter((_, i) => i !== at)
+    save(cwd, 'todo.md', left)
 
-    return `${isRemove ? 'Removed' : 'Moved to the backlog'}: ${items[at].summary}`
+    return `${isRemove ? 'Removed' : 'Moved to the backlog'}: ${items[at].summary}\n${shown(left)}`
   }
 
   if (word === 'archive') {
@@ -134,7 +138,7 @@ export function run(cwd, args) {
     save(cwd, 'backlog.md', [...list(cwd, 'backlog.md'), ...items])
     save(cwd, 'todo.md', [])
 
-    return `Moved ${items.length} to the backlog.`
+    return `Moved ${items.length} to the backlog.\n${shown([])}`
   }
 
   return USAGE
