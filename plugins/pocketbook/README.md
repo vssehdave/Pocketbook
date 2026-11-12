@@ -2,8 +2,8 @@ Pocketbook: keeps a Claude Code conversation inside context limits picked from y
 
 ## What it does
 
-- **Meter.** The footer shows `Context high 120K of 300K`: green with 70% or more of the limit left, yellow from 35% to 69%, red under 35%. It appears after the first reply of a new or just-compacted conversation.
-- **Modes.** A button beside the meter names the mode. Press it to pick one of four; `[-]` goes back.
+- **Meter.** The footer shows `Context high (120K used of 300K)`: green with 70% or more of the limit left, muted yellow from 35% to 69%, muted red under 35%. `/pocketbook setup -units` switches it to `Context high (40% used)`. It appears after the first reply of a new or just-compacted conversation.
+- **Modes.** A button beside the meter names the mode. Press it to pick one of four; `[-]` goes back. The chosen mode is drawn in the meter's colour: `off` always light grey, `lite` a lighter shade, `auto` the meter's own, `ultra` a darker one (olive, dark gold, crimson).
 
   | Mode | Soft limit | Hard limit |
   | --- | --- | --- |
@@ -27,6 +27,7 @@ Pocketbook turns Claude Code's own automatic compaction off, in every mode, so i
 | Command | What it does |
 | --- | --- |
 | `/pocketbook setup` | pick the limits from your history |
+| `/pocketbook setup -units [tokens\|%]` | switch the footer between tokens and percent used (no word toggles) |
 | `/pocketbook mode::<name>` | `off`, `lite`, `auto` or `ultra` |
 | `/pocketbook todo` | show the todo list, each item with its number |
 | `/pocketbook todo -add <text>` | add an item |

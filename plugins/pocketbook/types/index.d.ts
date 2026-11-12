@@ -8,8 +8,11 @@ export type Conf = { ceiling: number; soft: number; hard: number; ultraSoft: num
 // off: nothing is done. lite: the soft-limit note only. auto: the note, then compaction at the hard limit. ultra: both, earlier.
 export type Mode = 'off' | 'lite' | 'auto' | 'ultra'
 
+// How the footer states the size: in tokens or as a percent of the limit.
+export type Units = 'tokens' | 'percent'
+
 declare module 'claude-code' {
   interface PluginState {
-    pocketbook: { meter: Meter; conf: Conf | null; mode: Mode; isModesOpen: boolean; shells: readonly string[]; isHeld: boolean }
+    pocketbook: { meter: Meter; conf: Conf | null; mode: Mode; units: Units; isModesOpen: boolean; shells: readonly string[]; isHeld: boolean }
   }
 }
