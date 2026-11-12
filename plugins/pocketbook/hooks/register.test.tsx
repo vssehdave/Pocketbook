@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-const SLOT = { plugin: 'context-meter', component: 'SessionMode', surface: 'terminal', props: { modes: [] as string[] } } as const
+const SLOT = { plugin: 'pocketbook', component: 'SessionMode', surface: 'terminal', props: { modes: [] as string[] } } as const
 
 // What the session had stored: the last context size, in tokens.
 const stored = (tokens: number | null) => () => ({ value: { value: tokens === null ? null : { tokens }, version: 1 } })

@@ -1,5 +1,5 @@
 {
-  "name": "context-meter",
+  "name": "pocketbook",
   "version": "0.1.0",
   "description": "Shows how much context is left at the right of the prompt footer: high (green, 70% or more), medium (yellow, 35-69%), low (red, under 35%).",
   "license": "MIT",

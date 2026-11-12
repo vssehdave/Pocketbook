@@ -3,6 +3,6 @@ export type Meter = { tokens: number } | null
 
 declare module 'claude-code' {
   interface PluginState {
-    'context-meter': { meter: Meter }
+    'pocketbook': { meter: Meter }
   }
 }
