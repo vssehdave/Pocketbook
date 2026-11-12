@@ -396,7 +396,7 @@ async function loadConf($: any) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
-    await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | setup -units | mode::<name> | todo | backlog | stash <n> | archive]' })
+    await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | mode::<name> | todo | todo -add <text> | todo -remove <n> | stash <n> | archive | backlog]' })
     await loadConf($)
     // Pocketbook compacts by its own limits, so Claude Code's own automatic compaction is turned off; a refusal (a managed setting) is left be.
     await $.config.set({ key: 'autoCompact', value: false }).catch(() => undefined)
