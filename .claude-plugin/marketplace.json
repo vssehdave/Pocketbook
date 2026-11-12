@@ -1,0 +1,11 @@
+{
+  "name": "pocketbook",
+  "owner": { "name": "Veertej Sehdave" },
+  "plugins": [
+    {
+      "name": "context-meter",
+      "source": "./plugins/context-meter",
+      "description": "Shows how much context is left at the right of the prompt footer: high (green), medium (yellow), low (red)."
+    }
+  ]
+}
