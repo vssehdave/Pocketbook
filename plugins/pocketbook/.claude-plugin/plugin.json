@@ -1,7 +1,7 @@
 {
   "name": "pocketbook",
-  "version": "0.1.0",
-  "description": "Shows how much context is left at the right of the prompt footer: high (green, 70% or more), medium (yellow, 35-69%), low (red, under 35%).",
+  "version": "0.2.0",
+  "description": "Keeps a conversation inside context limits picked from your own history: a footer meter, a soft limit that holds large tasks on a todo list, and compaction at a hard limit.",
   "license": "MIT",
   "types": "./types/index.d.ts"
 }

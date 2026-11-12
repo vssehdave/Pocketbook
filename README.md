@@ -4,7 +4,7 @@ Small plugins for the coding agents I use.
 
 | Plugin | What it does | Works in |
 | --- | --- | --- |
-| [pocketbook](plugins/pocketbook) | Shows how much context is left, at the right of the prompt footer: `Context high (82% remaining)` in green at 70% or more, medium in yellow from 35% to 69%, low in red under 35%. | Claude Code |
+| [pocketbook](plugins/pocketbook) | Keeps a conversation inside context limits picked from your own history: a footer meter (`Context high 120K of 300K`), four modes, a soft limit that holds large tasks on a todo list, and compaction at a hard limit. | Claude Code |
 
 ## Install
 
@@ -15,4 +15,13 @@ Small plugins for the coding agents I use.
 
 Or from a local clone: `/plugin marketplace add <path to this folder>`.
 
-Only Claude Code has the footer this plugin draws into; other agents have no equivalent that a plugin can write to, so there is nothing to port yet.
+Then run `/pocketbook setup` once to pick your limits.
+
+Only Claude Code has the footer and the hooks this plugin uses; other agents have no equivalent that a plugin can reach, so there is nothing to port yet.
+
+## Development
+
+```
+claude plugin validate plugins/pocketbook
+claude plugin test plugins/pocketbook
+```
