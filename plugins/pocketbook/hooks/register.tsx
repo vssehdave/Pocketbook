@@ -225,10 +225,10 @@ async function setup($: any, typed: string): Promise<string> {
       : [
           `Looked at ${sessions.length} conversations from the last ${days} days (${sessions.flat().length} requests).`,
           '',
-          'Soft limit   Tokens read past it   Conversations that reached it',
-          ...rows.map(row => `${K(row.limit).padEnd(13)}${`${row.saved}%`.padEnd(22)}${row.reached}%`),
+          'Soft limit   Tokens saved   Conversations that reached it',
+          ...rows.map(row => `${K(row.limit).padEnd(13)}${`${row.saved}%`.padEnd(15)}${row.reached}%`),
           '',
-          'Tokens read past a limit are what a compaction there could have spared. A lower limit spares more and interrupts more conversations.',
+          'Tokens saved is the share of everything read that compacting at that limit would have spared, taking a compacted conversation as 30K. A lower limit saves more and interrupts more conversations.',
         ].join('\n')
   // The dialog takes four choices: the suggestion and the three limits nearest it. Any other is typed under "Other".
   const others = rows

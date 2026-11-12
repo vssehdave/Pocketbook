@@ -30,11 +30,11 @@ test('request sizes are read from git grep output, once per reply, without subag
 // Four conversations: one small, one that passes 150K, two that pass 200K.
 const SESSIONS = [[50_000, 100_000], [100_000, 160_000], [150_000, 210_000, 240_000], [220_000, 290_000, 20_000]]
 
-test('the table gives, per limit, the share of tokens read above it and of conversations that reached it', () => {
+test('the table gives, per limit, the share of tokens compacting there would have spared and of conversations that reached it', () => {
   expect(table(SESSIONS, 300_000)).toEqual([
-    { limit: 150_000, saved: 73, reached: 75 },
-    { limit: 200_000, saved: 62, reached: 50 },
-    { limit: 250_000, saved: 19, reached: 25 },
+    { limit: 150_000, saved: 47, reached: 75 },
+    { limit: 200_000, saved: 44, reached: 50 },
+    { limit: 250_000, saved: 14, reached: 25 },
   ])
   expect(table([], 300_000).map(row => row.saved)).toEqual([0, 0, 0])
   expect(table(SESSIONS, 150_000)).toEqual([])
