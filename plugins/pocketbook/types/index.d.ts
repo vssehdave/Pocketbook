@@ -5,8 +5,11 @@ export type Meter = { tokens: number } | null
 // mode's. `isSetUp` is false while they are the defaults, true once /pocketbook setup picked them.
 export type Conf = { ceiling: number; soft: number; hard: number; ultraSoft: number; ultraHard: number; isSetUp: boolean }
 
+// off: nothing is done. lite: the soft-limit note only. auto: the note, then compaction at the hard limit. ultra: both, earlier.
+export type Mode = 'off' | 'lite' | 'auto' | 'ultra'
+
 declare module 'claude-code' {
   interface PluginState {
-    pocketbook: { meter: Meter; conf: Conf | null }
+    pocketbook: { meter: Meter; conf: Conf | null; mode: Mode; isModesOpen: boolean }
   }
 }

@@ -1,4 +1,4 @@
-import type { Conf } from '../types'
+import type { Conf, Mode } from '../types'
 
 // 123456 reads "123K".
 export const K = (tokens: number) => `${Math.round(tokens / 1000)}K`
@@ -30,3 +30,18 @@ export const defaults = (ceiling: number): Conf => {
 
   return { ceiling, soft, hard: ceiling, ultraSoft, ultraHard: Math.max(ultraSoft + STEP, ceiling - 50_000), isSetUp: false }
 }
+
+export const MODES = ['off', 'lite', 'auto', 'ultra'] as const
+
+export const isMode = (text: unknown): text is Mode => MODES.includes(text as Mode)
+
+// What a mode acts on: `soft` is where the note starts and `hard` where the conversation is compacted, each absent when the mode does
+// not do that; `shown` is the limit the footer measures against, auto's hard limit for the modes that never compact.
+export const limitsOf = (conf: Conf, mode: Mode): { soft?: number; hard?: number; shown: number } =>
+  mode === 'off'
+    ? { shown: conf.hard }
+    : mode === 'lite'
+      ? { soft: conf.soft, shown: conf.hard }
+      : mode === 'auto'
+        ? { soft: conf.soft, hard: conf.hard, shown: conf.hard }
+        : { soft: conf.ultraSoft, hard: conf.ultraHard, shown: conf.ultraHard }

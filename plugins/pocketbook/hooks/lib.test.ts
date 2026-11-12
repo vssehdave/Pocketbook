@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { K, band, ceilingOf, defaults, leftOf } from './lib'
+import { K, band, ceilingOf, defaults, leftOf, limitsOf } from './lib'
 
 test('tokens read in thousands', () => {
   expect(K(123_456)).toBe('123K')
@@ -19,4 +19,13 @@ test('a compaction window someone set is the ceiling; with none, 80% of the mode
 
 test('the default limits sit under the ceiling', () => {
   expect(defaults(300_000)).toEqual({ ceiling: 300_000, soft: 225_000, hard: 300_000, ultraSoft: 175_000, ultraHard: 250_000, isSetUp: false })
+})
+
+test('each mode acts on its own limits', () => {
+  const conf = defaults(300_000)
+
+  expect(limitsOf(conf, 'off')).toEqual({ shown: 300_000 })
+  expect(limitsOf(conf, 'lite')).toEqual({ soft: 225_000, shown: 300_000 })
+  expect(limitsOf(conf, 'auto')).toEqual({ soft: 225_000, hard: 300_000, shown: 300_000 })
+  expect(limitsOf(conf, 'ultra')).toEqual({ soft: 175_000, hard: 250_000, shown: 250_000 })
 })
