@@ -22,7 +22,7 @@ Pocketbook turns Claude Code's own automatic compaction off, in every mode, so i
 
 ## Setup
 
-`/pocketbook setup` reads the last 14 days of your transcripts (`/pocketbook setup 30` for 30) and shows, for each soft limit from 150K up in 50K steps, the share of tokens compacting there would have saved and the share of conversations that reached it. You pick the soft limit. The hard limit is then set where 80% of your conversations that passed the soft limit peaked. It needs `git` on the PATH, which it uses to read the transcripts. Until you run it, the limits are derived from your compaction window.
+`/pocketbook setup` reads the last 14 days of your transcripts (`/pocketbook setup 30` for 30) and shows, for each soft limit from 150K up in 50K steps, the share of tokens compacting there would have saved and the share of conversations that reached it. You pick the soft limit. The hard limit is then set where 80% of your conversations that passed the soft limit peaked. It needs `git` on the PATH, which it uses to read the transcripts. Until you run it, the limits are derived from your compaction window. If `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is set and Claude Code's own auto-compact is off, setup also says that Claude Code will draw its red "Context low" warning from about 80% of that window, and where to remove it.
 
 ## Commands
 
@@ -38,13 +38,13 @@ Pocketbook turns Claude Code's own automatic compaction off, in every mode, so i
 | `/pocketbook archive` | move the whole todo list to the backlog |
 | `/pocketbook backlog` | show the backlog |
 
-The lists are `.pocketbook/todo.md` and `.pocketbook/backlog.md` in the project, and `.pocketbook/` is added to `.gitignore` where there is a repository. Each item is a one-line summary with the full request under it.
+Every command that changes the todo list answers with the list as it now stands, and none of them calls the model. The lists are `.pocketbook/todo.md` and `.pocketbook/backlog.md` in the project, and `.pocketbook/` is added to `.gitignore` where there is a repository. Each item is a one-line summary with the full request under it.
 
 ## Limits
 
 - Claude judges a task's size itself from the room it is told is left; this is an instruction, not a guarantee.
 - Background shells are counted from the calls that start them, so one that ends without a notification stays counted until the next prompt or `force:`.
-- It does not remove Claude Code's own "Context low" warning.
+- It cannot hide Claude Code's own red "Context low" warning: Claude Code raises it in a notification bar that plugins cannot reach. It shows only when auto-compact is off, measured against `CLAUDE_CODE_AUTO_COMPACT_WINDOW` if that is set; `/pocketbook setup` says so when it applies.
 - Claude Code only.
 
 Install: `/plugin marketplace add vssehdave/Pocketbook`, then `/plugin install pocketbook@pocketbook`.

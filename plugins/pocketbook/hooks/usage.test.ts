@@ -60,9 +60,11 @@ test('near the end of a window the todo list is shown once, with the word that -
   await measure($, 95)
   await measure($, 96)
 
-  expect(seen.logs).toHaveLength(1)
-  expect(seen.logs[0]).toContain('95% of the five-hour limit')
-  expect(seen.logs[0]).toContain('first task [1]')
+  expect(seen.logs.join('\n')).toContain('95% of the five-hour limit')
+  expect(seen.logs.join('\n')).toContain('first task [1]')
+  expect(seen.logs.every(line => !line.includes('\n'))).toBe(true) // one row a line: the engine garbles a break inside one
+  await measure($, 97)
+  expect(seen.logs.filter(line => line.includes('five-hour limit'))).toHaveLength(1) // said once
 })
 
 test('with usage out, -add keeps the request as its first line and asks no model', async ($, on) => {
@@ -104,7 +106,7 @@ test('with usage out the reply is not followed by a prompt; the next prompt carr
   await $.turn.complete(TURN)
 
   expect(seen.prompts).toEqual([])
-  expect(seen.logs.at(-1)).toContain('Usage is used up')
+  expect(seen.logs.join('\n')).toContain('Usage is used up')
 
   await $.prompt.submit({ text: 'carry on' })
 
