@@ -16,6 +16,8 @@ Pocketbook: keeps a Claude Code conversation inside context limits picked from y
 - **Hard limit.** The reply that passes it is followed by a compaction. If a background shell or agent is still running, the conversation is held instead and compacted when that work ends. While held, a typed prompt is not answered: it is added to the todo list and you are shown the list. `stop`, anything starting with `force:`, and `/pocketbook`, `/compact` and `/clear` still go through. `force:` is the way out if a shell is wrongly counted as running.
 - **Todo list.** After a compaction or a `/clear`, the list is shown and Claude works through it, deleting each item as it is done.
 
+- **When your usage runs out.** At 95% of a rate-limit window the todo list is printed once, with a reminder that `/pocketbook todo -add` keeps working after the limit is hit: it is a local command, so it needs no model, and the summary becomes the request's first line. Add as many as you like, mid-reply or after the limit. A todo added while a reply is running is handed to Claude when that reply ends; if usage is out by then, it is carried by your next prompt instead.
+
 Pocketbook turns Claude Code's own automatic compaction off, in every mode, so in `off` and `lite` nothing compacts unless you run `/compact`.
 
 ## Setup

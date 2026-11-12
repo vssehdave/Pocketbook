@@ -14,6 +14,17 @@ const units = atom({ plugin: 'pocketbook', key: 'units' } as const, 'tokens' as 
 // Whether the footer shows the four modes to pick from, in place of the meter.
 const isModesOpen = atom({ plugin: 'pocketbook', key: 'isModesOpen' } as const, false)
 
+// True while the main conversation is answering. A todo added then is pointed out to the model once that reply is over.
+const isTurn = atom({ plugin: 'pocketbook', key: 'isTurn' } as const, false)
+const added = atom({ plugin: 'pocketbook', key: 'added' } as const, false)
+// The most used of the account's rate-limit windows, 0 to 100, and the windows already warned about (kind and reset time).
+const usage = atom({ plugin: 'pocketbook', key: 'usage' } as const, 0)
+const warned = atom({ plugin: 'pocketbook', key: 'warned' } as const, [] as readonly string[])
+
+// The usage at which the todo list is shown, so it can still be added to once the account runs out; and the usage that is out.
+const NEAR = 95
+const OUT = 99
+
 // The background shells this session started that have not reported back. The engine lists running agents but not shells, so they
 // are counted here: one in when a Bash call goes to the background, out at its notification or its stop.
 const shells = atom({ plugin: 'pocketbook', key: 'shells' } as const, [] as readonly string[])
@@ -65,6 +76,7 @@ async function todoText($: any) {
 // handed to the model to work through.
 async function afterCompact($: any) {
   await update($, isHeld, () => false)
+  await update($, added, () => false) // the hand-over below covers what was added
   await refresh($)
   const items = await readList($, TODO)
 
@@ -157,6 +169,11 @@ async function summarize($: any, text: string) {
     return text.trim()
   }
 
+  // With the account out of usage the summary is the request's first line; a model call would only fail.
+  if ((await read($, usage)) >= OUT) {
+    return summaryOf(text)
+  }
+
   const answer = await $.model
     .complete({
       model: 'haiku',
@@ -171,6 +188,25 @@ async function summarize($: any, text: string) {
 async function addTodo($: any, text: string) {
   const items = await readList($, TODO)
   await writeList($, TODO, [...items, { summary: await summarize($, text), full: text }])
+
+  if (await read($, isTurn)) {
+    await update($, added, () => true)
+  }
+}
+
+// A reply has ended with todo items added during it. With usage left the model is handed the list now; with none it waits for the
+// next prompt, which carries the same word (see prompt.submit).
+async function handBack($: any) {
+  const items = await readList($, TODO)
+
+  if ((await read($, usage)) >= OUT) {
+    $.ui.log(`Usage is used up. What you add stays on the todo list and is picked up with your next prompt after it resets.\n\n${listing(items)}`)
+
+    return
+  }
+
+  await update($, added, () => false)
+  void $.prompt.submit({ text: `Todo items were added while you worked. Work through the todo list in ${TODO} one item at a time, and delete each item from the file as soon as it is done:\n${listing(items)}` }).catch(() => undefined)
 }
 
 // The context size of every request in the transcripts of the last `days` days, per conversation. Claude Code keeps them under its
@@ -398,6 +434,7 @@ export const register: Register = on => {
     const result = await next(e)
     await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | mode::<name> | todo | todo -add <text> | todo -remove <n> | stash <n> | archive | backlog]' })
     await loadConf($)
+    await update($, isTurn, () => false)
     // Pocketbook compacts by its own limits, so Claude Code's own automatic compaction is turned off; a refusal (a managed setting) is left be.
     await $.config.set({ key: 'autoCompact', value: false }).catch(() => undefined)
     await refresh($)
@@ -406,6 +443,33 @@ export const register: Register = on => {
   })
 
   // A /clear ends the conversation without starting a session, so what follows a compaction follows it here.
+  on('turn.start', async ($, e, next) => {
+    const result = await next(e)
+
+    if (e.agentId === undefined) {
+      await update($, isTurn, () => true)
+    }
+
+    return result
+  })
+
+  // Pushed when a rate-limit window moves a whole point. Near the end of one the todo list is shown once, so the person knows
+  // /pocketbook todo -add keeps working after it runs out, when the model answers nothing.
+  on('session.measure', async ($, e, next) => {
+    const result = await next(e)
+    await update($, usage, () => Math.max(0, ...e.rateLimits.map(limit => limit.percentUsed)))
+    const seen = await read($, warned)
+    const near = e.rateLimits.filter(limit => limit.percentUsed >= NEAR && !seen.includes(`${limit.kind}:${limit.resetsAt}`))
+
+    if (near.length > 0) {
+      await update($, warned, ids => [...ids, ...near.map(limit => `${limit.kind}:${limit.resetsAt}`)])
+      const worst = near.reduce((a, b) => (b.percentUsed > a.percentUsed ? b : a))
+      $.ui.log(`Usage is at ${Math.round(worst.percentUsed)}% of the ${worst.kind.replace('_', '-')} limit. /pocketbook todo -add keeps working when it runs out; what you add waits on the list.${(await todoText($)) || '\n\nThe todo list is empty.'}`)
+    }
+
+    return result
+  }).catch(($, e, next) => next(e))
+
   on('session.end', async ($, e, next) => {
     const result = await next(e)
 
@@ -451,8 +515,18 @@ export const register: Register = on => {
     }
 
     const past = e.command === undefined ? await pastSoft($) : undefined
+    const extra: string[] = []
 
-    return next(past === undefined ? e : { ...e, context: [...(e.context ?? []), rule(past.tokens, past.limit, TODO)] })
+    if (past !== undefined) {
+      extra.push(rule(past.tokens, past.limit, TODO))
+    }
+
+    if (e.command === undefined && from === 'composer' && (await read($, added))) {
+      await update($, added, () => false)
+      extra.push(`Pocketbook: todo items were added while you worked. After this request, work through the todo list in ${TODO} one item at a time and delete each as it is done.`)
+    }
+
+    return next(extra.length === 0 ? e : { ...e, context: [...(e.context ?? []), ...extra] })
   }).catch(($, e, next) => next(e))
 
   on('tool.call', async ($, e, next) => {
@@ -473,8 +547,14 @@ export const register: Register = on => {
     const result = await next(e)
     await refresh($)
 
-    if (e.agentId === undefined && (await pastHard($))) {
-      await atHardLimit($)
+    if (e.agentId === undefined) {
+      await update($, isTurn, () => false)
+
+      if (await pastHard($)) {
+        await atHardLimit($)
+      } else if (await read($, added)) {
+        await handBack($)
+      }
     }
 
     return result
