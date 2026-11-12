@@ -13,11 +13,97 @@ const mode = atom({ plugin: 'pocketbook', key: 'mode' } as const, 'auto' as Mode
 // Whether the footer shows the four modes to pick from, in place of the meter.
 const isModesOpen = atom({ plugin: 'pocketbook', key: 'isModesOpen' } as const, false)
 
-// The mode is the person's choice, kept across sessions.
+// The background shells this session started that have not reported back. The engine lists running agents but not shells, so they
+// are counted here: one in when a Bash call goes to the background, out at its notification or its stop.
+const shells = atom({ plugin: 'pocketbook', key: 'shells' } as const, [] as readonly string[])
+// True from the reply that passed the hard limit until the conversation is compacted.
+const isHeld = atom({ plugin: 'pocketbook', key: 'isHeld' } as const, false)
+
+const HELD = 'Compact limit reached: not responding until the background shell or agent ends and the chat is compacted.'
+// What the person may still send while held: these commands, the word stop, and anything that starts with force:.
+const FREE = ['pocketbook', 'compact', 'clear']
+
+// The mode is the person's choice, kept across sessions. A mode that does not compact here lets a held conversation go.
 async function setMode($: any, picked: Mode) {
   await $.store.set('mode', picked)
   await update($, mode, () => picked)
+
+  if (!(await pastHard($))) {
+    await update($, isHeld, () => false)
+  }
+
   await note($)
+}
+
+async function pastHard($: any) {
+  const m = await read($, meter)
+  const limits = await read($, conf)
+  const hard = limits === null ? undefined : limitsOf(limits, await read($, mode)).hard
+
+  return m !== null && hard !== undefined && m.tokens >= hard
+}
+
+async function isBusy($: any) {
+  if ((await read($, shells)).length > 0) {
+    return true
+  }
+
+  const agents = (await $.agent.list().catch(() => [])) as Array<{ status: string }>
+
+  return agents.some(agent => agent.status === 'pending' || agent.status === 'running' || agent.status === 'waiting')
+}
+
+// The todo list as the person is shown it under a message; nothing when it is empty.
+async function todoText($: any) {
+  const items = await readList($, TODO)
+
+  return items.length === 0 ? '' : `\n\nTodo:\n${listing(items)}`
+}
+
+// After a compaction or a clear of the main conversation: nothing is held any more, and what is on the todo list is shown and
+// handed to the model to work through.
+async function afterCompact($: any) {
+  await update($, isHeld, () => false)
+  await refresh($)
+  const items = await readList($, TODO)
+
+  if (items.length === 0) {
+    return
+  }
+
+  $.ui.log(`Todo:\n${listing(items)}`)
+  // Not awaited: the prompt starts a turn of its own once the session is idle, which is after this hook has returned.
+  void $.prompt
+    .submit({
+      text: `The conversation was just compacted or cleared. Work through the todo list in ${TODO} one item at a time, and delete each item from the file as soon as it is done:\n${listing(items)}`,
+    })
+    .catch(() => undefined)
+}
+
+// Compacts now; false when the engine would not (a turn is still running, or a hook refused).
+async function compactNow($: any) {
+  const done = await $.session.compact({ instructions: `Open work is listed in ${TODO}; say that it is there.` }).catch(() => undefined)
+
+  if (done === undefined || done.skip !== undefined) {
+    return false
+  }
+
+  await afterCompact($) // the engine does not run this mod's own session.compact hook for a compaction it asked for itself
+
+  return true
+}
+
+// The reply that passed the hard limit has ended. With background work running the conversation is held as it is; with none it is
+// compacted as soon as the turn has fully ended, or failing that before the next prompt.
+async function atHardLimit($: any) {
+  await update($, isHeld, () => true)
+  await note($)
+
+  if (await isBusy($)) {
+    $.ui.log(HELD + (await todoText($)))
+  } else {
+    $.clock.after(250, () => void compactNow($))
+  }
 }
 
 // Where the conversation stands once it is past the mode's soft limit, against the limit the footer shows; nothing before that.
@@ -37,7 +123,7 @@ async function pastSoft($: any) {
 // The status line holds the soft-limit note for as long as it is true, and is cleared when it stops being.
 async function note($: any) {
   const past = await pastSoft($)
-  $.ui.status(past === undefined ? undefined : softNote(past.tokens, past.limit))
+  $.ui.status((await read($, isHeld)) ? 'Compact limit reached: compacting once background work has ended.' : past === undefined ? undefined : softNote(past.tokens, past.limit))
 }
 
 // Reads the size after the engine has done its part, so the figure is the reply's, not the one before.
@@ -296,7 +382,21 @@ export const register: Register = on => {
     const result = await next(e)
     await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | mode::<name> | todo | backlog | stash <n> | archive]' })
     await loadConf($)
+    // Pocketbook compacts by its own limits, so Claude Code's own automatic compaction is turned off; a refusal (a managed setting) is left be.
+    await $.config.set({ key: 'autoCompact', value: false }).catch(() => undefined)
     await refresh($)
+
+    return result
+  })
+
+  // A /clear ends the conversation without starting a session, so what follows a compaction follows it here.
+  on('session.end', async ($, e, next) => {
+    const result = await next(e)
+
+    if (e.reason === 'clear') {
+      await update($, shells, () => [])
+      await afterCompact($)
+    }
 
     return result
   })
@@ -304,14 +404,46 @@ export const register: Register = on => {
   on('command.run', { command: 'pocketbook' }, async ($, e) => ({ text: await run($, e.args.trim()) }))
 
   // Past the soft limit the model reads the rule beside every prompt, so it is always measured against the room left now.
+  // While held, what the person types is not answered: it is kept on the todo list and they are told why. A failure here lets the prompt through.
   on('prompt.submit', async ($, e, next) => {
+    const text = e.text.trim()
+    const from = e.origin?.kind ?? 'composer' // a prompt with no origin is the person's own
+
+    if (from === 'task-notification') {
+      await update($, shells, ids => ids.filter(id => !text.includes(id)))
+    } else if (/^force:/i.test(text)) {
+      await update($, shells, () => []) // the way out when a shell is wrongly counted as running
+    } else if (
+      from === 'composer' &&
+      text.toLowerCase() !== 'stop' &&
+      !(e.command !== undefined && FREE.includes(e.command.name)) &&
+      (await read($, isHeld))
+    ) {
+      if (await isBusy($)) {
+        if (e.command === undefined) {
+          await addTodo($, e.text)
+        }
+
+        return { drop: HELD + (await todoText($)) }
+      }
+
+      await compactNow($) // the background work ended without a word: compact first, then answer
+    }
+
     const past = e.command === undefined ? await pastSoft($) : undefined
 
     return next(past === undefined ? e : { ...e, context: [...(e.context ?? []), rule(past.tokens, past.limit, TODO)] })
-  })
+  }).catch(($, e, next) => next(e))
 
   on('tool.call', async ($, e, next) => {
     const result = await next(e)
+    const started = e.tool === 'Bash' ? ((result as { result?: { backgroundTaskId?: string } }).result?.backgroundTaskId ?? '') : ''
+    const stopped = e.tool === 'TaskStop' ? (e.task_id ?? e.shell_id ?? '') : ''
+
+    if (started !== '' || stopped !== '') {
+      await update($, shells, ids => (started !== '' ? [...ids, started] : ids.filter(id => id !== stopped)))
+    }
+
     await refresh($)
 
     return result
@@ -321,12 +453,28 @@ export const register: Register = on => {
     const result = await next(e)
     await refresh($)
 
+    if (e.agentId === undefined && (await pastHard($))) {
+      await atHardLimit($)
+    }
+
     return result
   })
 
   on('session.compact', async ($, e, next) => {
+    const isMain = e.agentId === undefined
+
+    // An automatic compaction waits as Pocketbook's own does while background work runs; one the person asks for never waits.
+    if (isMain && e.trigger === 'auto' && (await read($, isHeld)) && (await isBusy($))) {
+      return { skip: 'Pocketbook is waiting for background work to end before compacting.' }
+    }
+
     const result = await next(e)
-    await refresh($)
+
+    if (isMain && result.skip === undefined && (e.trigger === 'manual' || e.trigger === 'auto')) {
+      await afterCompact($)
+    } else {
+      await refresh($)
+    }
 
     return result
   })

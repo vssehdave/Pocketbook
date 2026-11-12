@@ -10,6 +10,6 @@ export type Mode = 'off' | 'lite' | 'auto' | 'ultra'
 
 declare module 'claude-code' {
   interface PluginState {
-    pocketbook: { meter: Meter; conf: Conf | null; mode: Mode; isModesOpen: boolean }
+    pocketbook: { meter: Meter; conf: Conf | null; mode: Mode; isModesOpen: boolean; shells: readonly string[]; isHeld: boolean }
   }
 }
