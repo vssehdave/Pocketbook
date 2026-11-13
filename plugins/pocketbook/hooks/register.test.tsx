@@ -117,7 +117,7 @@ test('ultra measures against its own hard limit', async ($, on) => {
   await ui.unmount()
 })
 
-test('the mode button opens the four modes, a press picks one and keeps it, and [-] goes back', async ($, on) => {
+test('the mode button opens the four modes, a press picks one, keeps it and returns to the meter, and [-] goes back', async ($, on) => {
   const kept: Record<string, unknown> = { conf: CONF }
   on('store.get', (_, e) => ({ value: kept[e.key] }))
   on('store.set', (_, e) => {
@@ -136,9 +136,11 @@ test('the mode button opens the four modes, a press picks one and keeps it, and 
   expect((await ui.find({ type: 'Text', text: /auto/ }))?.text).toBe('[ auto ]')
 
   await ui.press({ key: 'mode:lite' })
-  expect((await ui.find({ type: 'Text', text: /lite/ }))?.text).toBe('[ lite ]')
   expect(kept.mode).toBe('lite')
+  expect((await ui.find({ type: 'Text', text: /Context/ }))?.text).toBe('Context high (60K used of 300K)') // back on the meter, no [ lite ] row
+  expect((await ui.find({ type: 'Text', text: /lite/ }))?.text).toBe('lite')
 
+  await ui.press({ key: 'mode' })
   await ui.press({ key: 'close' })
   expect((await ui.find({ type: 'Text', text: /Context/ }))?.text).toBe('Context high (60K used of 300K)')
   await ui.unmount()
