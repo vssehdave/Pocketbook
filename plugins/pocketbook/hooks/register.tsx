@@ -77,36 +77,18 @@ function say($: any, text: string) {
 }
 
 const PANE = 'pocketbook-list'
-// A counter bumped when either list changes so an open pane redraws, and the first row the pane shows, for a list longer than it has
-// room for.
+// A counter bumped when either list changes so an open pane redraws, and the first item each half of the pane shows, for a list longer
+// than its half has room for.
 const rev = atom({ plugin: 'pocketbook', key: 'rev' } as const, 0)
-const top = atom({ plugin: 'pocketbook', key: 'top' } as const, 0)
+const topTodo = atom({ plugin: 'pocketbook', key: 'topTodo' } as const, 0)
+const topBacklog = atom({ plugin: 'pocketbook', key: 'topBacklog' } as const, 0)
 
-type Row = { section: 'TODO' | 'BACKLOG'; summary: string; n: number } // n is 0 for the line that says a list is empty
-
-// The todo list, then the backlog, as the pane lays them out.
-async function rowsOf($: any): Promise<Row[]> {
-  const rows: Row[] = []
-
-  for (const [section, path] of [['TODO', TODO], ['BACKLOG', BACKLOG]] as const) {
-    const items = await readList($, path)
-
-    if (items.length === 0) {
-      rows.push({ section, summary: 'The list is empty.', n: 0 })
-    }
-
-    items.forEach((item, at) => rows.push({ section, summary: item.summary, n: at + 1 }))
-  }
-
-  return rows
-}
-
-// Opens the pane with both lists, at the todo list or at the backlog. Only ever for the person's own press or command: the engine draws
-// such an open at any width, and only if it comes before any await. A toast cannot hold a list: it shows three lines at most.
-async function showList($: any, at: 'TODO' | 'BACKLOG' = 'TODO') {
+// Opens the pane: the todo list on the top half, the backlog on the bottom. Only ever for the person's own press or command: the
+// engine draws such an open at any width, and only if it comes before any await. A toast cannot hold a list: it shows three lines.
+async function showList($: any) {
   const opening = $.ui.open({ id: PANE, title: 'Todo', closeOnEscape: true })
-  const rows = await rowsOf($)
-  await update($, top, () => (at === 'TODO' ? 0 : Math.max(0, rows.findIndex(row => row.section === 'BACKLOG'))))
+  await update($, topTodo, () => 0)
+  await update($, topBacklog, () => 0)
   await update($, rev, n => n + 1)
   await opening.catch(() => undefined)
 }
@@ -238,7 +220,7 @@ async function summarize($: any, text: string) {
     .complete({
       model: 'haiku',
       maxTokens: 60,
-      prompt: `Rewrite this request as one line of at most 15 words that keeps what is asked for. Leave out names of people, secrets, file contents and pasted data. Answer with the line alone.\n\n${text}`,
+      prompt: `Rewrite this request as one line of at most ${SUMMARY} characters that keeps what is asked for, ending on a whole word. Leave out names of people, secrets, file contents and pasted data. Answer with the line alone.\n\n${text}`,
     })
     .catch(() => undefined)
 
@@ -432,7 +414,7 @@ async function run($: any, args: string): Promise<string> {
   }
 
   if (word === 'backlog') {
-    await showList($, 'BACKLOG')
+    await showList($)
 
     return ''
   }
@@ -440,7 +422,7 @@ async function run($: any, args: string): Promise<string> {
   const items = await readList($, TODO)
 
   if (word === 'todo' && rest === '') {
-    await showList($, 'TODO')
+    await showList($)
 
     return ''
   }
@@ -454,7 +436,7 @@ async function run($: any, args: string): Promise<string> {
 
     await addTodo($, text)
 
-    await showList($, 'TODO')
+    await showList($)
 
     return 'Added.'
   }
@@ -475,7 +457,7 @@ async function run($: any, args: string): Promise<string> {
     const left = items.filter((_, i) => i !== at)
     await writeList($, TODO, left)
 
-    await showList($, 'TODO')
+    await showList($)
 
     return `${isRemove ? 'Removed' : 'Moved to the backlog'}: ${items[at]!.summary}`
   }
@@ -488,7 +470,7 @@ async function run($: any, args: string): Promise<string> {
     await writeList($, BACKLOG, [...(await readList($, BACKLOG)), ...items])
     await writeList($, TODO, [])
 
-    await showList($, 'TODO')
+    await showList($)
 
     return `Moved ${items.length} to the backlog.`
   }
@@ -669,71 +651,70 @@ export const register: Register = on => {
     return result
   })
 
-  // The list pane: the todo list, then the backlog. A title sits between rules that fill the width, then each summary from the left with
-  // its number at the right edge, on the item's first line; a long summary wraps under itself. It follows the pane's width, so it needs
-  // no padding. A pane drawn inline has about a third of the terminal's height and does not scroll, so a longer list is paged with the
-  // arrows in the first title. The engine draws the close mark and takes Escape.
+  // The list pane: the todo list on the top half, the backlog on the bottom, each with its own title, arrows and page. A title sits
+  // between rules that fill the width, then each summary from the left with its number at the right edge, on the item's first line; a
+  // long summary wraps under itself. It follows the pane's width, so it needs no padding. A pane drawn inline has about a third of the
+  // terminal's height and does not scroll, so a half that is too long is paged with its arrows. The engine draws the close mark.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     await read($, rev)
-    const rows = await rowsOf($)
-    const room = Math.max(3, Math.floor((e.viewport?.rows ?? 24) / 3) - 2) // lines under the first title; a docked pane has more
-    const wide = Math.max(20, (e.viewport?.columns ?? 80) - 10)
-    const start = Math.min(await read($, top), rows.length - 1)
-    let end = start
-    let used = 0
+    // The pane says how many rows and columns its body has, docked or inline; the fallbacks are an inline pane of a third of the screen.
+    const props = e.props as { scroll?: { bodyRows?: number }; bodyColumns?: number } | undefined
+    const half = Math.max(2, Math.floor(((props?.scroll?.bodyRows ?? Math.floor((e.viewport?.rows ?? 24) / 3) - 2) - 2) / 2)) // item lines per half
+    const wide = Math.max(20, (props?.bodyColumns ?? e.viewport?.columns ?? 80) - 5) // the width of a summary, after the number
 
-    for (; end < rows.length; end += 1) {
-      const need = Math.max(1, Math.ceil(rows[end]!.summary.length / wide)) + (end > start && rows[end]!.section !== rows[end - 1]!.section ? 1 : 0)
+    const part = async (title: 'TODO' | 'BACKLOG', path: string) => {
+      const items = await readList($, path)
+      const lines = (i: number) => Math.max(1, Math.ceil(items[i]!.summary.length / wide))
+      const first = title === 'TODO' ? await read($, topTodo) : await read($, topBacklog)
+      const start = Math.min(first, Math.max(0, items.length - 1))
+      const go = (n: number) => void (title === 'TODO' ? update($, topTodo, () => n) : update($, topBacklog, () => n))
+      let end = start
+      let used = 0
 
-      if (end > start && used + need > room) {
-        break
+      while (end < items.length && (end === start || used + lines(end) <= half)) {
+        used += lines(end)
+        end += 1
       }
 
-      used += need
+      return (
+        <Box key={title} flexDirection="column">
+          <Box>
+            <Box width={0} flexGrow={1} height={1} overflow="hidden">
+              <Text dimColor>{'-'.repeat(300)}</Text>
+            </Box>
+            <Text bold>{` ${title} `}</Text>
+            <Box width={0} flexGrow={1} height={1} overflow="hidden">
+              <Text dimColor>{'-'.repeat(300)}</Text>
+            </Box>
+            {start > 0 && (
+              <Button key={`up:${title}`} plain onPress={() => go(Math.max(0, start - Math.max(1, end - start)))}>
+                <Text dimColor> [▲]</Text>
+              </Button>
+            )}
+            {end < items.length && (
+              <Button key={`down:${title}`} plain onPress={() => go(end)}>
+                <Text dimColor> [▼]</Text>
+              </Button>
+            )}
+          </Box>
+          {items.length === 0 && <Text dimColor>The list is empty.</Text>}
+          {items.slice(start, end).map((item, i) => (
+            <Box key={`${start + i}:${item.summary}`} gap={1}>
+              <Box flexGrow={1} flexShrink={1}>
+                <Text>{item.summary}</Text>
+              </Box>
+              <Text dimColor>{`[${start + i + 1}]`}</Text>
+            </Box>
+          ))}
+        </Box>
+      )
     }
-
-    const rule = (title: string, tail?: unknown) => (
-      <Box key={`rule:${title}`}>
-        <Box width={0} flexGrow={1} height={1} overflow="hidden">
-          <Text dimColor>{'-'.repeat(300)}</Text>
-        </Box>
-        <Text bold>{` ${title} `}</Text>
-        <Box width={0} flexGrow={1} height={1} overflow="hidden">
-          <Text dimColor>{'-'.repeat(300)}</Text>
-        </Box>
-        {tail}
-      </Box>
-    )
-    const arrows = (
-      <Box>
-        {start > 0 && (
-          <Button key="up" plain onPress={() => void update($, top, () => Math.max(0, start - Math.max(1, end - start)))}>
-            <Text dimColor> [▲]</Text>
-          </Button>
-        )}
-        {end < rows.length && (
-          <Button key="down" plain onPress={() => void update($, top, () => Math.min(rows.length - 1, end))}>
-            <Text dimColor> [▼]</Text>
-          </Button>
-        )}
-      </Box>
-    )
 
     return (
       <Box flexDirection="column">
-        {rule(rows[start]!.section, arrows)}
-        {rows.slice(start, end).map((row, i) => (
-          <Box key={`${start + i}:${row.summary}`} flexDirection="column">
-            {i > 0 && row.section !== rows[start + i - 1]!.section && rule(row.section)}
-            <Box gap={1}>
-              <Box flexGrow={1} flexShrink={1}>
-                <Text dimColor={row.n === 0}>{row.summary}</Text>
-              </Box>
-              {row.n > 0 && <Text dimColor>{`[${row.n}]`}</Text>}
-            </Box>
-          </Box>
-        ))}
+        {await part('TODO', TODO)}
+        {await part('BACKLOG', BACKLOG)}
       </Box>
     )
   })
@@ -783,7 +764,7 @@ export const register: Register = on => {
         <Button key="mode" plain onPress={() => update($, isModesOpen, () => true)}>
           <Text color={color}>●</Text> <Text>{current}</Text>
         </Button>
-        <Button key="details" plain onPress={() => void showList($, 'TODO')}>
+        <Button key="details" plain onPress={() => void showList($)}>
           <Text dimColor>details</Text>
         </Button>
       </Box>
