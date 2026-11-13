@@ -57,7 +57,7 @@ test('the todo and backlog commands change the lists and open the list pane', as
   expect(await pocketbook($, 'archive')).toBe('Moved 1 to the backlog.')
   expect(todo()).toEqual([])
   expect(await pocketbook($, 'backlog')).toBeUndefined()
-  expect(opens.at(-1)?.title).toBe('Backlog')
+  expect(opens.at(-1)?.id).toBe('pocketbook-list')
   expect(summaries('.pocketbook/backlog.md')).toEqual(['second task', 'third task'])
 })
 
