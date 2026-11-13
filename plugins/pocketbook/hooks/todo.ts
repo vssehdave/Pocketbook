@@ -25,11 +25,64 @@ export const serialize = (title: string, items: readonly Item[]) =>
     .map(({ summary, full }) => (full === summary ? `- ${summary}\n` : `- ${summary}\n${full.replace(/^/gm, '  ')}\n`))
     .join('')
 
-// The summary used when no model wrote one: the first line that says something, cut to 100 characters.
+// The longest a summary is: one line of a list, and what a request is cut to when no model writes its summary.
+export const SUMMARY = 60
+
+// The summary used when no model wrote one: the first line that says something, cut to SUMMARY characters.
 export const summaryOf = (text: string) => {
   const line = (text.split(/\r?\n/).find(one => one.trim() !== '') ?? '').trim().replace(/\s+/g, ' ')
 
-  return line.length > 100 ? `${line.slice(0, 99)}…` : line
+  return line.length > SUMMARY ? `${line.slice(0, SUMMARY - 1)}…` : line
+}
+
+// The width of the list toast in columns; a narrower terminal gets a narrower toast (see toastWidth in register.tsx).
+export const TOAST_WIDTH = 40
+
+// Words broken into lines of at most `width` characters; a word longer than a line is cut.
+const wrap = (text: string, width: number) => {
+  const lines: string[] = []
+  let line = ''
+
+  for (let word of text.split(/\s+/).filter(Boolean)) {
+    for (; word.length > width; word = word.slice(width)) {
+      if (line !== '') {
+        lines.push(line)
+        line = ''
+      }
+
+      lines.push(word.slice(0, width))
+    }
+
+    if (line === '') {
+      line = word
+    } else if (line.length + 1 + word.length <= width) {
+      line += ` ${word}`
+    } else {
+      lines.push(line)
+      line = word
+    }
+  }
+
+  return [...lines, line]
+}
+
+// The list as a toast shows it, `width` columns across: the title centred between dashes, then each summary from the left edge with
+// its number ending at the right edge, on the item's first line. A long summary wraps under itself.
+export const toastText = (title: string, items: readonly Item[], width = TOAST_WIDTH) => {
+  const dashes = Math.max(2, width - title.length - 2)
+  const head = `${'-'.repeat(Math.floor(dashes / 2))} ${title} ${'-'.repeat(Math.ceil(dashes / 2))}`
+
+  if (items.length === 0) {
+    return `${head}\nThe list is empty.`
+  }
+
+  const room = width - String(items.length).length - 3 // the widest "[n]" and a space
+
+  const rows = items.flatMap((item, at) =>
+    wrap(item.summary, room).map((line, i) => (i === 0 ? line.padEnd(width - `[${at + 1}]`.length) + `[${at + 1}]` : line)),
+  )
+
+  return [head, ...rows].join('\n')
 }
 
 // What the person is shown: each summary, then its number for `todo -remove` and `stash`.

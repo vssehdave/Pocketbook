@@ -162,3 +162,23 @@ test('the first session works the limits out from the compaction window and keep
 
   expect(kept.conf).toEqual(CONF)
 })
+
+test('the details button shows the todo list as a one-minute toast', async ($, on) => {
+  const toasts: Array<{ text: string; timeoutMs?: number }> = []
+  const files: Record<string, string> = { '.pocketbook/todo.md': '# Pocketbook todo\n\n- Fix the typo\n' }
+  on('state.get', stored({ meter: { tokens: 60_000 }, conf: CONF }))
+  on('fs.exists', (_, e) => ({ value: e.path in files }))
+  on('fs.read', (_, e) => ({ value: files[e.path] }))
+  on('ui.toast', (_, e) => {
+    toasts.push(e)
+
+    return { value: undefined }
+  })
+  const ui = await $.ui.mount(SLOT)
+
+  await ui.press({ key: 'details' })
+  expect(toasts).toHaveLength(1)
+  expect(toasts[0]!.timeoutMs).toBe(60_000)
+  expect(toasts[0]!.text.split('\n')).toEqual([`${'-'.repeat(17)} TODO ${'-'.repeat(17)}`, `Fix the typo${' '.repeat(25)}[1]`])
+  await ui.unmount()
+})
