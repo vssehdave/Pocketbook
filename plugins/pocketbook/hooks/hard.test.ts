@@ -181,3 +181,13 @@ test('a reply is never compacted under way: not at a tool call, not when a subag
 
   expect(seen.compactions).toBe(0)
 })
+
+test('off starts nothing on its own after a compaction, but /pocketbook work still goes ahead', async ($, on) => {
+  const { seen, clock } = await session($, on, 'off')
+  await $.command.run({ command: 'pocketbook', args: 'todo -add write the docs' })
+  await $.session.compact({ trigger: 'manual', messages: MESSAGES })
+  await clock.settle()
+  expect(seen.prompts).toEqual([])
+
+  expect((await $.command.run({ command: 'pocketbook', args: 'work' })).text).toBe('Started on 1 item.') // asked for, so it goes ahead
+})
