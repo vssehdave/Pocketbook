@@ -187,14 +187,28 @@ async function continueRun($: any) {
   }
 }
 
-// After a compaction or a clear of the main conversation: nothing is held any more, and the todo list is started on.
-async function afterCompact($: any) {
+// After a compaction or a clear of the main conversation: nothing is held any more. Only a compaction Pocketbook made itself starts a
+// run on the todo list; after a clear or a compaction the person or Claude Code made, the person is told what is waiting and left to
+// decide. Off says nothing.
+async function afterCompact($: any, isOwn = false) {
   await update($, isHeld, () => false)
   await update($, added, () => false) // the run covers what was added
   await refresh($)
 
-  if ((await read($, mode)) !== 'off') {
+  if ((await read($, mode)) === 'off') {
+    return
+  }
+
+  if (isOwn) {
     await startRun($) // the prompt it submits starts a turn of its own once the session is idle
+
+    return
+  }
+
+  const waiting = (await readList($, TODO)).length
+
+  if (waiting > 0) {
+    say($, `You have ${waiting} item${waiting === 1 ? '' : 's'} on the todo list. Run /pocketbook todo to see ${waiting === 1 ? 'it' : 'them'}, or /pocketbook work to have ${waiting === 1 ? 'it' : 'them'} worked through one at a time.`)
   }
 }
 
@@ -209,7 +223,7 @@ async function compactNow($: any) {
     return false
   }
 
-  await afterCompact($) // the engine does not run this mod's own session.compact hook for a compaction it asked for itself
+  await afterCompact($, true) // the engine does not run this mod's own session.compact hook for a compaction it asked for itself
   await record($, before)
 
   return true

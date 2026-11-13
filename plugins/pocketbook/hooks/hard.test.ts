@@ -137,25 +137,28 @@ test('force: lets a prompt through while held and forgets the shells counted', a
   expect(seen.compactions).toBe(1)
 })
 
-test('a compaction the person asks for is never refused, and hands the todo list over', async ($, on) => {
+test('a compaction the person asks for is never refused, and only tells them what is waiting', async ($, on) => {
   const { seen, clock } = await session($, on, 'auto')
   await $.tool.call({ tool: 'Bash', command: 'sleep 999', run_in_background: true })
   await $.turn.complete(TURN)
   await $.prompt.submit({ text: 'write the docs' }) // refused, kept
 
   expect((await $.session.compact({ trigger: 'manual', messages: MESSAGES })).skip).toBeUndefined()
-  await clock.settle() // the hand-over is a prompt of its own, sent without waiting
-  expect(seen.prompts.at(-1)).toContain('Work on the first item on the todo list now: write the docs')
+  await clock.settle()
+  expect(seen.prompts).toEqual([]) // nothing starts: the person decides
+  expect(seen.logs.at(-1)).toBe('You have 1 item on the todo list. Run /pocketbook todo to see it, or /pocketbook work to have it worked through one at a time.')
 })
 
-test('a run hands over the first item, then the next once the first is gone, and stops when an item is left as it was', async ($, on) => {
+test('after its own compaction a run hands over the first item, then the next once the first is gone, and stops when an item is left as it was', async ($, on) => {
   const { seen, clock } = await session($, on, 'auto')
   await $.tool.call({ tool: 'Bash', command: 'sleep 999', run_in_background: true })
   await $.turn.complete(TURN)
   await $.prompt.submit({ text: 'first task' })
   await $.prompt.submit({ text: 'second task' })
   await $.prompt.submit({ text: 'third task' })
-  await $.session.compact({ trigger: 'manual', messages: MESSAGES })
+  await $.tool.call({ tool: 'TaskStop', task_id: 'sh1' })
+  await $.turn.complete(TURN)
+  await clock.advance(250) // Pocketbook's own compaction
   await clock.settle()
   expect(seen.prompts.at(-1)).toContain('first task')
 
