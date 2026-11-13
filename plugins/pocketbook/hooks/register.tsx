@@ -445,6 +445,7 @@ const USAGE = `Pocketbook commands:
   backlog             show the backlog
   backlog -add <text>   add to it
   backlog -remove <n>   remove item n
+  todo|backlog -remove -all  remove every item from that list
   unstash <n>         move item n back to the todo list
   restore             move the whole backlog to the todo list`
 
@@ -519,6 +520,17 @@ async function run($: any, args: string): Promise<string> {
       await showList($, list)
 
       return 'Added.'
+    }
+
+    if (restWords[0] === '-remove' && restWords[1] === '-all') {
+      if (kept.length === 0) {
+        return `The ${word} list is empty.`
+      }
+
+      await writeList($, path, [])
+      await showList($, list)
+
+      return `Removed all ${kept.length} from the ${word === 'todo' ? 'todo list' : 'backlog'}.`
     }
 
     if (restWords[0] === '-remove') {

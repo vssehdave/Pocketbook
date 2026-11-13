@@ -229,6 +229,12 @@ test('the backlog has the todo list commands, and unstash and restore bring item
   expect(await pocketbook($, 'backlog -remove 2')).toBe('Give the number of an item, 1 to 1.')
   expect(await pocketbook($, 'backlog -remove 1')).toBe('Removed: to delete')
   expect(backlog()).toEqual([])
+
+  expect(await pocketbook($, 'backlog -remove -all')).toBe('The backlog list is empty.')
+  await pocketbook($, 'backlog -add one')
+  await pocketbook($, 'backlog -add two')
+  expect(await pocketbook($, 'backlog -remove -all')).toBe('Removed all 2 from the backlog.')
+  expect(backlog()).toEqual([])
 })
 
 test('todo and backlog open their own list alone, and show is the one that gives both', async ($, on) => {
