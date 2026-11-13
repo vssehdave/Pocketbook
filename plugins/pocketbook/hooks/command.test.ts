@@ -179,3 +179,72 @@ test('details shows the whole request of an item in the pane, with no model', as
   expect(await pocketbook($, 'details -backlog 1')).toBe('The backlog list is empty.')
   expect(await pocketbook($, 'details nope')).toMatch(/Say which list/)
 })
+
+const IGNORE_CASES: Array<[string, string | undefined, string]> = [
+  ['there is no .gitignore', undefined, '.pocketbook/\n'],
+  ['it has other lines and no final break', 'dist', 'dist\n.pocketbook/\n'],
+  ['it names the folder', 'dist\n.pocketbook/\n', 'dist\n.pocketbook/\n'],
+  ['it names it from the root', '/.pocketbook\n', '/.pocketbook\n'],
+  ['it names it without the slash, with Windows breaks', 'dist\r\n.pocketbook\r\n', 'dist\r\n.pocketbook\r\n'],
+  ['it only mentions it in a comment', '# .pocketbook\n', '# .pocketbook\n.pocketbook/\n'],
+]
+
+for (const [when, before, after] of IGNORE_CASES) {
+  test(`.pocketbook/ is in .gitignore before a list is written when ${when}`, async ($, on) => {
+    const { files } = world(on, before === undefined ? {} : { '.gitignore': before })
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+    await pocketbook($, 'todo -add first task')
+    await pocketbook($, 'backlog -add parked task')
+    expect(files['.gitignore']).toBe(after)
+    expect(files['.pocketbook/todo.md']).toBeDefined()
+  })
+}
+
+const summariesOf = (text: string | undefined) => (text ?? '').split('\n').filter(line => line.startsWith('- ')).map(line => line.slice(2))
+
+test('the backlog has the todo list commands, and unstash and restore bring items back', async ($, on) => {
+  const { files } = world(on)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const todo = () => summariesOf(files['.pocketbook/todo.md'])
+  const backlog = () => summariesOf(files['.pocketbook/backlog.md'])
+
+  expect(await pocketbook($, 'backlog -add first parked')).toBe('Added.')
+  await pocketbook($, 'backlog -add second parked')
+  expect(backlog()).toEqual(['first parked', 'second parked'])
+  expect(todo()).toEqual([])
+
+  expect(await pocketbook($, 'unstash 1')).toBe('Moved to the todo list: first parked')
+  expect(todo()).toEqual(['first parked'])
+  expect(backlog()).toEqual(['second parked'])
+  expect(await pocketbook($, 'stash 1')).toBe('Moved to the backlog: first parked')
+  expect(await pocketbook($, 'restore')).toBe('Moved 2 to the todo list.')
+  expect(todo()).toEqual(['second parked', 'first parked'])
+  expect(backlog()).toEqual([])
+
+  expect(await pocketbook($, 'restore')).toBe('The backlog list is empty.')
+  expect(await pocketbook($, 'unstash 1')).toBe('The backlog list is empty.')
+  expect(await pocketbook($, 'backlog -remove 1')).toBe('The backlog list is empty.')
+  await pocketbook($, 'backlog -add to delete')
+  expect(await pocketbook($, 'backlog -remove 2')).toBe('Give the number of an item, 1 to 1.')
+  expect(await pocketbook($, 'backlog -remove 1')).toBe('Removed: to delete')
+  expect(backlog()).toEqual([])
+})
+
+test('todo and backlog open their own list alone, and show is the one that gives both', async ($, on) => {
+  world(on, { '.pocketbook/todo.md': '# Pocketbook todo\n\n- a todo item\n', '.pocketbook/backlog.md': '# Pocketbook backlog\n\n- a parked item\n' })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const slot = { plugin: 'pocketbook', component: 'Pane', requestId: 'pocketbook-list', surface: 'terminal', props: {} } as const
+
+  await pocketbook($, 'todo')
+  let pane = await $.ui.mount(slot)
+  expect(await pane.find({ type: 'Text', text: /a todo item/ })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: /a parked item/ })).toBeUndefined()
+  await pane.unmount()
+
+  await pocketbook($, 'backlog')
+  pane = await $.ui.mount(slot)
+  expect(await pane.find({ type: 'Text', text: /a parked item/ })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: /a todo item/ })).toBeUndefined()
+  await pane.unmount()
+})

@@ -31,15 +31,19 @@ Pocketbook turns Claude Code's own automatic compaction off, in every mode, so i
 | `/pocketbook setup` | pick the limits from your history |
 | `/pocketbook setup -units [tokens\|%]` | switch the footer between tokens and percent used (no word toggles) |
 | `/pocketbook mode::<name>` | `off`, `lite`, `auto` or `ultra`. It answers with where that mode notes and compacts; picking `off` instead says how many compactions Pocketbook has made so far and how many tokens they shrank the context by in total (the context before each, less after it). The footer's mode buttons print the same answer in the transcript. |
-| `/pocketbook todo` | show the todo list, each item with its number |
+| `/pocketbook todo` | show the todo list alone, each item with its number |
 | `/pocketbook todo -add <text>` | add an item |
 | `/pocketbook todo -remove <n>` | remove item n |
 | `/pocketbook stash <n>` | move item n to the backlog |
 | `/pocketbook archive` | move the whole todo list to the backlog |
-| `/pocketbook backlog` | show the backlog |
+| `/pocketbook backlog` | show the backlog alone |
+| `/pocketbook backlog -add <text>` | add an item to the backlog |
+| `/pocketbook backlog -remove <n>` | remove backlog item n |
+| `/pocketbook unstash <n>` | move backlog item n back to the todo list |
+| `/pocketbook restore` | move the whole backlog back to the todo list |
 | `/pocketbook details -todo <n>` or `-backlog <n>` | open the pane on the whole request of that item, under the title `TODO #n` or `BACKLOG #n`; `[back]` returns to the lists. It reads the list file and calls no model, so it works when usage has run out |
 
-The todo and backlog commands, and the footer's `show` button, open one pane: the todo list on the top half and the backlog on the bottom half. Each half has a title between dashes that fill the width, then its summaries from the left with their numbers at the right edge, on the item's first line, a long summary wrapping under itself. The pane only ever opens when you press or type something, never by itself. The ✕ in its corner or Escape closes it, and it follows the lists as you change them. A half that has more items than it has room for (a pane above the prompt is about a third of the terminal's height, split between the two halves) is paged with its own `[▲]` and `[▼]` in its title. A toast was tried first and cannot work: the engine shows at most three lines of one and turns every line break into a replacement character. None of the commands calls the model. The lists are `.pocketbook/todo.md` and `.pocketbook/backlog.md` in the project, and `.pocketbook/` is added to `.gitignore` where there is a repository. Each item is a one-line summary with the full request under it.
+The footer's `show` button opens one pane with the todo list on the top half and the backlog on the bottom half. `/pocketbook todo` and `/pocketbook backlog` open their own list alone, using the whole pane. Each list has a title between dashes that fill the width, then its summaries from the left with their numbers at the right edge, on the item's first line, a long summary wrapping under itself. Click a number to open that item's whole request under the title `TODO #n` or `BACKLOG #n`, with `[back]` at the left of the title. The pane only ever opens when you press or type something, never by itself. The ✕ in its corner or Escape closes it, and it follows the lists as you change them. A list with more items than it has room for (a pane above the prompt is about a third of the terminal's height) is paged with `[▲]` and `[▼]` at the right of its title. A toast was tried first and cannot work: the engine shows at most three lines of one and turns every line break into a replacement character. None of the commands calls the model. The lists are `.pocketbook/todo.md` and `.pocketbook/backlog.md` in the project, and `.pocketbook/` is put in `.gitignore` before either list is written. The `.gitignore` is created if there is none, in a repository or not, and a list is not written if that cannot be done. A folder whose lists already exist is covered at the start of a session. Each item is a one-line summary with the full request under it.
 
 ## Limits
 
