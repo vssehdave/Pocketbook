@@ -266,3 +266,27 @@ test('todo and backlog open their own list alone, and show is the one that gives
   expect(await pane.find({ type: 'Text', text: /a todo item/ })).toBeUndefined()
   await pane.unmount()
 })
+
+test('edit puts an item in the prompt box to change, and rewrites it when given the new text', async ($, on) => {
+  const filled: string[] = []
+  const { files } = world(on, { '.pocketbook/todo.md': '# Pocketbook todo\n\n- first\n  the full first request\n- second\n', '.pocketbook/backlog.md': '# Pocketbook backlog\n\n- parked\n' })
+  on('prompt.fill', (_: unknown, e: { text: string }) => {
+    filled.push(e.text)
+
+    return { isFilled: true }
+  })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  expect(await pocketbook($, 'edit 1')).toBe('Say which item: edit t<n> for the todo list or edit b<n> for the backlog, then the new text.')
+  expect(await pocketbook($, 'edit t9')).toBe('Give the number of an item, 1 to 2.')
+  expect(await pocketbook($, 'edit b1')).toBeUndefined()
+  expect(filled.at(-1)).toBe('/pocketbook edit b1 parked')
+  expect(await pocketbook($, 'edit t1')).toBeUndefined()
+  expect(filled.at(-1)).toBe('/pocketbook edit t1 the full first request') // the whole request, not the summary
+
+  expect(await pocketbook($, 'edit t2 second, reworded')).toBe('Edited.')
+  expect(files['.pocketbook/todo.md']).toContain('- second, reworded')
+  expect(files['.pocketbook/todo.md']).toContain('- first')
+  expect(await pocketbook($, 'edit B1 parked again')).toBe('Edited.')
+  expect(files['.pocketbook/backlog.md']).toContain('- parked again')
+})

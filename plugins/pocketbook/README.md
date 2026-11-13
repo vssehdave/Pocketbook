@@ -41,6 +41,7 @@ Pocketbook turns Claude Code's own automatic compaction off, in every mode, so i
 | `/pocketbook backlog -remove <n>` | remove backlog item n |
 | `/pocketbook backlog -remove -all` (also `todo -remove -all`) | empty that list |
 | `/pocketbook unstash <n>` | move backlog item n back to the todo list |
+| `/pocketbook edit t<n>` or `edit b<n>` | put that todo (`t`) or backlog (`b`) item's whole request in the prompt box as a draft: change it and press Enter. `edit t<n> <new text>` rewrites the item at once and answers `Edited.` |
 | `/pocketbook work` or `work <n>` | start a run: the model is handed the first item on the todo list, and when its reply ends the next first item, until the list is empty. Items removed meanwhile are skipped and the numbers are read again each time. A reply that leaves the first item as it was stops the run (so a stuck item is not repeated); `work` picks it up again. `work <n>` hands over just item n. Past the soft limit it compacts first, and the list is handed over after. Refused when usage is used up. The model is told to read each item's full request in the file, since the list shows only summaries |
 | `/pocketbook unstash -all` | move the whole backlog back to the todo list |
 | `/pocketbook details -todo <n>` or `-backlog <n>` | open the pane on the whole request of that item, under the title `TODO #n` or `BACKLOG #n`; `[back]` returns to the lists. It reads the list file and calls no model, so it works when usage has run out |
