@@ -196,6 +196,8 @@ test('the details button opens the list pane, which shows each item with its num
   expect((await pane.find({ type: 'Text', text: /TODO/ }))?.text).toBe(' TODO ')
   expect((await pane.find({ type: 'Text', text: /typo/ }))?.text).toBe('Fix the typo')
   expect((await pane.find({ type: 'Text', text: /2/ }))?.text).toBe('[2]')
+  expect((await pane.find({ type: 'Text', text: /BACKLOG/ }))?.text).toBe(' BACKLOG ') // the backlog follows in the same pane
+  expect((await pane.find({ type: 'Text', text: /empty/ }))?.text).toBe('The list is empty.')
   await pane.unmount()
 })
 
@@ -207,10 +209,11 @@ test('a list longer than the pane has room for is paged, with its range in the t
   on('fs.read', (_, e) => ({ value: files[at(e.path)] }))
   const pane = await $.ui.mount({ plugin: 'pocketbook', component: 'Pane', requestId: 'pocketbook-list', surface: 'terminal', props: {} })
 
-  expect((await pane.find({ type: 'Text', text: /TODO/ }))?.text).toBe(' TODO 1-5 of 14 ')
-  expect(await pane.find({ type: 'Text', text: /item 6/ })).toBeUndefined()
+  expect(await pane.find({ type: 'Text', text: /item 4/ })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: /item 8/ })).toBeUndefined()
   expect(await pane.find({ type: 'Button', key: 'up' })).toBeUndefined() // nothing before the first page
   await pane.press({ key: 'down' })
-  expect((await pane.find({ type: 'Text', text: /TODO/ }))?.text).toBe(' TODO 6-10 of 14 ')
+  expect(await pane.find({ type: 'Text', text: /item 8/ })).toBeDefined()
+  expect(await pane.find({ type: 'Button', key: 'up' })).toBeDefined()
   await pane.unmount()
 })

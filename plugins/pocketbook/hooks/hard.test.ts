@@ -109,7 +109,7 @@ test('with a shell in the background the conversation is held, prompts are kept 
   expect((await $.prompt.submit({ text: 'add a login page' })).drop).toBe(
     'Compact limit reached: not responding until the background shell or agent ends and the chat is compacted.',
   )
-  expect(seen.opens.at(-1)).toBe('Todo') // the list opens in its pane
+  expect(seen.opens).toEqual([]) // the pane is opened by the person, never by Pocketbook
   expect((await $.prompt.submit({ text: 'stop' })).drop).toBeUndefined()
   expect((await $.session.compact({ trigger: 'auto', messages: MESSAGES })).skip).toBe('Pocketbook is waiting for background work to end before compacting.')
   expect(seen.compactions).toBe(0)
@@ -120,7 +120,7 @@ test('with a shell in the background the conversation is held, prompts are kept 
 
   expect(seen.compactions).toBe(1)
   expect(seen.status).toBeUndefined()
-  expect(seen.opens.at(-1)).toBe('Todo') // the list opens in its pane, never as a log row
+  expect(seen.opens).toEqual([]) // and the list is never a log row
   expect(seen.logs.join('\n')).not.toContain('login page')
   expect(seen.prompts.at(-1)).toContain('Work through the todo list in .pocketbook/todo.md one item at a time')
 })

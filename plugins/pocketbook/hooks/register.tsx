@@ -77,30 +77,38 @@ function say($: any, text: string) {
 }
 
 const PANE = 'pocketbook-list'
-// Which list the pane shows, and a counter bumped when either changes so an open pane redraws.
-const shownList = atom({ plugin: 'pocketbook', key: 'shownList' } as const, 'TODO' as 'TODO' | 'BACKLOG')
+// A counter bumped when either list changes so an open pane redraws, and the first row the pane shows, for a list longer than it has
+// room for.
 const rev = atom({ plugin: 'pocketbook', key: 'rev' } as const, 0)
-// The first item the pane shows, for a list longer than it has room for.
 const top = atom({ plugin: 'pocketbook', key: 'top' } as const, 0)
 
-// Opens the list in a pane, or redraws it when it is open. A toast shows three lines at most and no line break, so it cannot hold a
-// list. Resolves whether a surface drew it: a pane opened by the person's own press or command is drawn at any width.
-async function showList($: any, title: 'TODO' | 'BACKLOG'): Promise<boolean> {
-  // The open comes first, before any await: the engine takes it as the person's own only while the press or command is still running.
-  const opening = $.ui.open({ id: PANE, title: title === 'TODO' ? 'Todo' : 'Backlog', closeOnEscape: true })
-  await update($, shownList, () => title)
-  await update($, top, () => 0)
-  await update($, rev, n => n + 1)
-  const opened = await opening.catch(() => undefined)
+type Row = { section: 'TODO' | 'BACKLOG'; summary: string; n: number } // n is 0 for the line that says a list is empty
 
-  return opened?.isPlaced === true
+// The todo list, then the backlog, as the pane lays them out.
+async function rowsOf($: any): Promise<Row[]> {
+  const rows: Row[] = []
+
+  for (const [section, path] of [['TODO', TODO], ['BACKLOG', BACKLOG]] as const) {
+    const items = await readList($, path)
+
+    if (items.length === 0) {
+      rows.push({ section, summary: 'The list is empty.', n: 0 })
+    }
+
+    items.forEach((item, at) => rows.push({ section, summary: item.summary, n: at + 1 }))
+  }
+
+  return rows
 }
 
-// The list opened by what Pocketbook itself noticed: on a narrow terminal the surface leaves such a pane undrawn, so say where it is.
-async function offerList($: any) {
-  if (!(await showList($, 'TODO'))) {
-    say($, 'The todo list is behind the details button in the footer.')
-  }
+// Opens the pane with both lists, at the todo list or at the backlog. Only ever for the person's own press or command: the engine draws
+// such an open at any width, and only if it comes before any await. A toast cannot hold a list: it shows three lines at most.
+async function showList($: any, at: 'TODO' | 'BACKLOG' = 'TODO') {
+  const opening = $.ui.open({ id: PANE, title: 'Todo', closeOnEscape: true })
+  const rows = await rowsOf($)
+  await update($, top, () => (at === 'TODO' ? 0 : Math.max(0, rows.findIndex(row => row.section === 'BACKLOG'))))
+  await update($, rev, n => n + 1)
+  await opening.catch(() => undefined)
 }
 
 // After a compaction or a clear of the main conversation: nothing is held any more, and what is on the todo list is shown and
@@ -115,7 +123,6 @@ async function afterCompact($: any) {
     return
   }
 
-  await offerList($)
   // Not awaited: the prompt starts a turn of its own once the session is idle, which is after this hook has returned.
   void $.prompt
     .submit({
@@ -169,8 +176,7 @@ async function atHardLimit($: any) {
 
   if (await isBusy($)) {
     say($, HELD)
-    await offerList($)
-  } else {
+    } else {
     $.clock.after(250, () => void compactNow($))
   }
 }
@@ -255,8 +261,7 @@ async function handBack($: any) {
 
   if ((await read($, usage)) >= OUT) {
     say($, 'Usage is used up. What you add stays on the todo list and is picked up with your next prompt after it resets.')
-    await offerList($)
-
+  
     return
   }
 
@@ -545,8 +550,7 @@ export const register: Register = on => {
       await update($, warned, ids => [...ids, ...near.map(limit => `${limit.kind}:${limit.resetsAt}`)])
       const worst = near.reduce((a, b) => (b.percentUsed > a.percentUsed ? b : a))
       say($, `Usage is at ${Math.round(worst.percentUsed)}% of the ${worst.kind.replace('_', '-')} limit. /pocketbook todo -add keeps working when it runs out; what you add waits on the list.`)
-      await offerList($)
-    }
+        }
 
     return result
   }).catch(($, e, next) => next(e))
@@ -589,8 +593,7 @@ export const register: Register = on => {
           await addTodo($, e.text)
         }
 
-        await offerList($)
-
+      
         return { drop: HELD }
       }
 
@@ -666,64 +669,71 @@ export const register: Register = on => {
     return result
   })
 
-  // The list pane: the title between rules that fill the width, then each summary from the left with its number at the right edge,
-  // on the item's first line; a long summary wraps under itself. It follows the pane's width, so it needs no padding. A pane drawn
-  // inline has about a third of the terminal's height and does not scroll, so a longer list is paged with the arrows in the header.
+  // The list pane: the todo list, then the backlog. A title sits between rules that fill the width, then each summary from the left with
+  // its number at the right edge, on the item's first line; a long summary wraps under itself. It follows the pane's width, so it needs
+  // no padding. A pane drawn inline has about a third of the terminal's height and does not scroll, so a longer list is paged with the
+  // arrows in the first title. The engine draws the close mark and takes Escape.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     await read($, rev)
-    const title = await read($, shownList)
-    const items = await readList($, title === 'TODO' ? TODO : BACKLOG)
-    const room = Math.max(2, Math.floor((e.viewport?.rows ?? 24) / 3) - 3) // lines under the header; a docked pane has more
+    const rows = await rowsOf($)
+    const room = Math.max(3, Math.floor((e.viewport?.rows ?? 24) / 3) - 2) // lines under the first title; a docked pane has more
     const wide = Math.max(20, (e.viewport?.columns ?? 80) - 10)
-    const start = Math.min(await read($, top), Math.max(0, items.length - 1))
+    const start = Math.min(await read($, top), rows.length - 1)
     let end = start
     let used = 0
 
-    while (end < items.length && (end === start || used + Math.ceil(items[end]!.summary.length / wide) <= room)) {
-      used += Math.max(1, Math.ceil(items[end]!.summary.length / wide))
-      end += 1
+    for (; end < rows.length; end += 1) {
+      const need = Math.max(1, Math.ceil(rows[end]!.summary.length / wide)) + (end > start && rows[end]!.section !== rows[end - 1]!.section ? 1 : 0)
+
+      if (end > start && used + need > room) {
+        break
+      }
+
+      used += need
     }
 
-    const isPaged = start > 0 || end < items.length
-    const rule = (
-      <Box width={0} flexGrow={1} height={1} overflow="hidden">
-        <Text dimColor>{'-'.repeat(300)}</Text>
+    const rule = (title: string, tail?: unknown) => (
+      <Box key={`rule:${title}`}>
+        <Box width={0} flexGrow={1} height={1} overflow="hidden">
+          <Text dimColor>{'-'.repeat(300)}</Text>
+        </Box>
+        <Text bold>{` ${title} `}</Text>
+        <Box width={0} flexGrow={1} height={1} overflow="hidden">
+          <Text dimColor>{'-'.repeat(300)}</Text>
+        </Box>
+        {tail}
+      </Box>
+    )
+    const arrows = (
+      <Box>
+        {start > 0 && (
+          <Button key="up" plain onPress={() => void update($, top, () => Math.max(0, start - Math.max(1, end - start)))}>
+            <Text dimColor> [▲]</Text>
+          </Button>
+        )}
+        {end < rows.length && (
+          <Button key="down" plain onPress={() => void update($, top, () => Math.min(rows.length - 1, end))}>
+            <Text dimColor> [▼]</Text>
+          </Button>
+        )}
       </Box>
     )
 
     return (
       <Box flexDirection="column">
-        <Box>
-          {rule}
-          <Text bold>{` ${title}${isPaged ? ` ${start + 1}-${end} of ${items.length}` : ''} `}</Text>
-          {rule}
-          {start > 0 && (
-            <Button key="up" plain onPress={() => void update($, top, () => Math.max(0, start - Math.max(1, end - start)))}>
-              <Text dimColor> [▲]</Text>
-            </Button>
-          )}
-          {end < items.length && (
-            <Button key="down" plain onPress={() => void update($, top, () => Math.min(items.length - 1, end))}>
-              <Text dimColor> [▼]</Text>
-            </Button>
-          )}
-          <Button key="close" plain onPress={() => void $.ui.close({ id: PANE })}>
-            <Text dimColor> [x]</Text>
-          </Button>
-        </Box>
-        {items.length === 0 ? (
-          <Text dimColor>The list is empty.</Text>
-        ) : (
-          items.slice(start, end).map((item, i) => (
-            <Box key={`${start + i}:${item.summary}`} gap={1}>
+        {rule(rows[start]!.section, arrows)}
+        {rows.slice(start, end).map((row, i) => (
+          <Box key={`${start + i}:${row.summary}`} flexDirection="column">
+            {i > 0 && row.section !== rows[start + i - 1]!.section && rule(row.section)}
+            <Box gap={1}>
               <Box flexGrow={1} flexShrink={1}>
-                <Text>{item.summary}</Text>
+                <Text dimColor={row.n === 0}>{row.summary}</Text>
               </Box>
-              <Text dimColor>{`[${start + i + 1}]`}</Text>
+              {row.n > 0 && <Text dimColor>{`[${row.n}]`}</Text>}
             </Box>
-          ))
-        )}
+          </Box>
+        ))}
       </Box>
     )
   })

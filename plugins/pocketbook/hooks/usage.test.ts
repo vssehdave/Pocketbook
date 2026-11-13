@@ -66,7 +66,7 @@ test('near the end of a window the todo list is shown once, with the word that -
   await measure($, 96)
 
   expect(seen.logs.join('\n')).toContain('95% of the five-hour limit')
-  expect(seen.opens).toContain('Todo')
+  expect(seen.opens).toEqual(['Todo']) // only by the one -add typed above, never by the warning
   expect(seen.logs.join('\n')).not.toContain('first task') // the list is in its pane, not a log row
   expect(seen.logs.every(line => !line.includes('\n'))).toBe(true) // one row a line: the engine garbles a break inside one
   await measure($, 97)
