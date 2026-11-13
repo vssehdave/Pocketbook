@@ -4,7 +4,7 @@ import type { Register } from 'claude-code'
 import type { Conf, Meter, Mode, Units } from '../types'
 import { K, MODES, band, ceilingOf, defaults, isMode, leftOf, limitsOf, modeColor, rule, softNote, usedText } from './lib'
 import { PATTERN, confFor, hardLimit, sizesOf, suggested, table, tokensIn } from './analysis'
-import { BACKLOG, SUMMARY, TODO, TOAST_WIDTH, listing, parse, pick, serialize, shown, summaryOf, toastText } from './todo'
+import { BACKLOG, SUMMARY, TODO, TOAST_WIDTH, listing, parse, pick, serialize, summaryOf, toastText } from './todo'
 import type { Item } from './todo'
 
 const meter = atom({ plugin: 'pocketbook', key: 'meter' } as const, null as Meter)
@@ -86,20 +86,6 @@ async function showList($: any, title: string, path: string) {
   $.ui.toast(toastText(title, await readList($, path), width), { timeoutMs: TOAST_MS })
 }
 
-// The todo list as the person is shown it under a message; nothing when it is empty.
-async function todoText($: any) {
-  const items = await readList($, TODO)
-
-  return items.length === 0 ? '' : `\n\nTodo:\n${listing(items)}`
-}
-
-// The same list on one line, for a prompt that is dropped: the engine turns a line break in a drop's text into a replacement character.
-async function todoInline($: any) {
-  const items = await readList($, TODO)
-
-  return items.length === 0 ? '' : ` Todo: ${items.map((item, at) => `${item.summary} [${at + 1}]`).join('; ')}`
-}
-
 // After a compaction or a clear of the main conversation: nothing is held any more, and what is on the todo list is shown and
 // handed to the model to work through.
 async function afterCompact($: any) {
@@ -112,7 +98,7 @@ async function afterCompact($: any) {
     return
   }
 
-  say($, `Todo:\n${listing(items)}`)
+  await showList($, 'TODO', TODO)
   // Not awaited: the prompt starts a turn of its own once the session is idle, which is after this hook has returned.
   void $.prompt
     .submit({
@@ -143,7 +129,8 @@ async function atHardLimit($: any) {
   await note($)
 
   if (await isBusy($)) {
-    say($, HELD + (await todoText($)))
+    say($, HELD)
+    await showList($, 'TODO', TODO)
   } else {
     $.clock.after(250, () => void compactNow($))
   }
@@ -228,7 +215,8 @@ async function handBack($: any) {
   const items = await readList($, TODO)
 
   if ((await read($, usage)) >= OUT) {
-    say($, `Usage is used up. What you add stays on the todo list and is picked up with your next prompt after it resets.\n\n${listing(items)}`)
+    say($, 'Usage is used up. What you add stays on the todo list and is picked up with your next prompt after it resets.')
+    await showList($, 'TODO', TODO)
 
     return
   }
@@ -404,13 +392,17 @@ async function run($: any, args: string): Promise<string> {
   }
 
   if (word === 'backlog') {
-    return listing(await readList($, BACKLOG)) || 'The backlog is empty.'
+    await showList($, 'BACKLOG', BACKLOG)
+
+    return ''
   }
 
   const items = await readList($, TODO)
 
   if (word === 'todo' && rest === '') {
-    return listing(items) || 'The todo list is empty.'
+    await showList($, 'TODO', TODO)
+
+    return ''
   }
 
   if (word === 'todo' && restWords[0] === '-add') {
@@ -422,7 +414,9 @@ async function run($: any, args: string): Promise<string> {
 
     await addTodo($, text)
 
-    return `Added. ${shown(await readList($, TODO))}`
+    await showList($, 'TODO', TODO)
+
+    return 'Added.'
   }
 
   const isRemove = word === 'todo' && restWords[0] === '-remove'
@@ -441,7 +435,9 @@ async function run($: any, args: string): Promise<string> {
     const left = items.filter((_, i) => i !== at)
     await writeList($, TODO, left)
 
-    return `${isRemove ? 'Removed' : 'Moved to the backlog'}: ${items[at]!.summary}\n${shown(left)}`
+    await showList($, 'TODO', TODO)
+
+    return `${isRemove ? 'Removed' : 'Moved to the backlog'}: ${items[at]!.summary}`
   }
 
   if (word === 'archive') {
@@ -452,7 +448,9 @@ async function run($: any, args: string): Promise<string> {
     await writeList($, BACKLOG, [...(await readList($, BACKLOG)), ...items])
     await writeList($, TODO, [])
 
-    return `Moved ${items.length} to the backlog.\n${shown([])}`
+    await showList($, 'TODO', TODO)
+
+    return `Moved ${items.length} to the backlog.`
   }
 
   return USAGE
@@ -511,7 +509,8 @@ export const register: Register = on => {
     if (near.length > 0) {
       await update($, warned, ids => [...ids, ...near.map(limit => `${limit.kind}:${limit.resetsAt}`)])
       const worst = near.reduce((a, b) => (b.percentUsed > a.percentUsed ? b : a))
-      say($, `Usage is at ${Math.round(worst.percentUsed)}% of the ${worst.kind.replace('_', '-')} limit. /pocketbook todo -add keeps working when it runs out; what you add waits on the list.${(await todoText($)) || '\n\nThe todo list is empty.'}`)
+      say($, `Usage is at ${Math.round(worst.percentUsed)}% of the ${worst.kind.replace('_', '-')} limit. /pocketbook todo -add keeps working when it runs out; what you add waits on the list.`)
+      await showList($, 'TODO', TODO)
     }
 
     return result
@@ -528,7 +527,12 @@ export const register: Register = on => {
     return result
   })
 
-  on('command.run', { command: 'pocketbook' }, async ($, e) => ({ text: await run($, e.args.trim()) }))
+  on('command.run', { command: 'pocketbook' }, async ($, e) => {
+    columns = e.presentation?.columns || columns
+    const text = await run($, e.args.trim())
+
+    return text === '' ? {} : { text } // a list command answers with the toast alone
+  })
 
   // Past the soft limit the model reads the rule beside every prompt, so it is always measured against the room left now.
   // While held, what the person types is not answered: it is kept on the todo list and they are told why. A failure here lets the prompt through.
@@ -551,7 +555,9 @@ export const register: Register = on => {
           await addTodo($, e.text)
         }
 
-        return { drop: HELD + (await todoInline($)) }
+        await showList($, 'TODO', TODO)
+
+        return { drop: HELD }
       }
 
       // The background work ended without a word: compact first, then answer. Never for a prompt typed over a running reply

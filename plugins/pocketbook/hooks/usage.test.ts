@@ -6,7 +6,7 @@ const LONG = `${'a request that goes on '.repeat(6)}and on`
 
 // A started session with 60K tokens in it, the engine stood in for; `seen` records what the mod did.
 const session = async ($: any, on: any) => {
-  const seen = { logs: [] as string[], prompts: [] as Array<{ text: string; context?: string[] }>, completions: 0 }
+  const seen = { logs: [] as string[], toasts: [] as string[], prompts: [] as Array<{ text: string; context?: string[] }>, completions: 0 }
   const files: Record<string, string> = {}
   const clock = mock.clock(on)
   mock.store(on, { conf: CONF, mode: 'auto' })
@@ -22,6 +22,11 @@ const session = async ($: any, on: any) => {
   on('command.register', () => ({ value: { command: 'pocketbook' } }))
   on('config.set', (_: unknown, e: { value: unknown }) => ({ value: e.value }))
   on('agent.list', () => ({ value: [] }))
+  on('ui.toast', (_: unknown, e: { text: string }) => {
+    seen.toasts.push(e.text)
+
+    return { value: undefined }
+  })
   on('ui.status', () => ({ value: undefined }))
   on('ui.log', (_: unknown, e: { text: string }) => {
     seen.logs.push(e.text)
@@ -61,7 +66,8 @@ test('near the end of a window the todo list is shown once, with the word that -
   await measure($, 96)
 
   expect(seen.logs.join('\n')).toContain('95% of the five-hour limit')
-  expect(seen.logs.join('\n')).toContain('first task [1]')
+  expect(seen.toasts.join('\n')).toContain('first task')
+  expect(seen.logs.join('\n')).not.toContain('first task') // the list is a toast, not a log row
   expect(seen.logs.every(line => !line.includes('\n'))).toBe(true) // one row a line: the engine garbles a break inside one
   await measure($, 97)
   expect(seen.logs.filter(line => line.includes('five-hour limit'))).toHaveLength(1) // said once
