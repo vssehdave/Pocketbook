@@ -841,7 +841,7 @@ export const register: Register = on => {
       }
 
       return (
-        <Box key={title} flexDirection="column">
+        <Box key={title} flexDirection="column" height={view === 'BOTH' ? cap + 1 : undefined}>
           {rule(
             title,
             <Box>
