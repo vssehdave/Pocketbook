@@ -4,7 +4,7 @@ import type { Register } from 'claude-code'
 import type { Conf, Meter, Mode, Units } from '../types'
 import { K, MODES, band, ceilingOf, defaults, isMode, leftOf, limitsOf, modeColor, rule, softNote, usedText } from './lib'
 import { PATTERN, confFor, hardLimit, sizesOf, suggested, table, tokensIn } from './analysis'
-import { BACKLOG, TODO, listing, parse, pick, serialize, shown, summaryOf } from './todo'
+import { BACKLOG, SUMMARY, TODO, TOAST_WIDTH, listing, parse, pick, serialize, shown, summaryOf, toastText } from './todo'
 import type { Item } from './todo'
 
 const meter = atom({ plugin: 'pocketbook', key: 'meter' } as const, null as Meter)
@@ -73,6 +73,17 @@ function say($: any, text: string) {
       $.ui.log(line)
     }
   }
+}
+
+// The terminal's width as last seen by the footer or a command, so a toast on a narrow window is narrower.
+// shortcut: a module variable, lost on a reload and 80 until the footer draws; fine, the next draw sets it.
+let columns = 80
+const TOAST_MS = 60_000 // the most the engine allows; the pointer over a toast holds it and a click takes it off
+
+// A list as a toast: the title between dashes, then each summary and its number. A toast is plain text, so the layout is spaces.
+async function showList($: any, title: string, path: string) {
+  const width = Math.min(TOAST_WIDTH, Math.max(20, columns - 8))
+  $.ui.toast(toastText(title, await readList($, path), width), { timeoutMs: TOAST_MS })
 }
 
 // The todo list as the person is shown it under a message; nothing when it is empty.
@@ -182,7 +193,7 @@ async function writeList($: any, path: string, items: readonly Item[]) {
 
 // One line that says what a request asks, with what should not be repeated left out; the first line of the request when no model answers.
 async function summarize($: any, text: string) {
-  if (text.length <= 100 && !text.includes('\n')) {
+  if (text.length <= SUMMARY && !text.includes('\n')) {
     return text.trim()
   }
 
@@ -628,6 +639,7 @@ export const register: Register = on => {
     const { name, color } = band(leftOf(m?.tokens ?? 0, shown))
     const unit = (await read($, units)) === 'percent' ? 'percent' : 'tokens'
     const { Box, Button, Text } = $.ui.resolve(e)
+    columns = e.viewport?.columns || columns
 
     if (await read($, isModesOpen)) {
       return (
@@ -659,6 +671,9 @@ export const register: Register = on => {
         {size}
         <Button key="mode" plain onPress={() => update($, isModesOpen, () => true)}>
           <Text color={color}>●</Text> <Text>{current}</Text>
+        </Button>
+        <Button key="details" plain onPress={() => void showList($, 'TODO', TODO)}>
+          <Text dimColor>details</Text>
         </Button>
       </Box>
     )
