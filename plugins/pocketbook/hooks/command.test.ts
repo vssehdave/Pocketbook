@@ -6,11 +6,11 @@ const named = (path: string) => path.replace(/\\/g, '/').replace(/^.*\/plugins\/
 
 const world = (on: any, files: Record<string, string> = {}, context: Record<string, unknown> = { window: 1_000_000 }) => {
   const kept: Record<string, unknown> = {}
-  const toasts: string[] = []
-  on('ui.toast', (_: unknown, e: { text: string }) => {
-    toasts.push(e.text)
+  const opens: Array<{ id: string; title: string }> = []
+  on('ui.open', (_: unknown, e: { id: string; title: string }) => {
+    opens.push(e)
 
-    return { value: undefined }
+    return { value: { isPlaced: true } }
   })
   on('fs.exists', (_: unknown, e: { path: string }) => ({ value: named(e.path) in files }))
   on('fs.read', (_: unknown, e: { path: string }) => ({ value: files[named(e.path)] }))
@@ -29,35 +29,36 @@ const world = (on: any, files: Record<string, string> = {}, context: Record<stri
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   on('command.register', () => ({ value: { command: 'pocketbook' } }))
 
-  return { files, kept, toasts }
+  return { files, kept, opens }
 }
 
 const pocketbook = async ($: any, args: string) => (await $.command.run({ command: 'pocketbook', args })).text
 
-test('the todo list is added to, listed, stashed, removed from and archived, each shown as a toast', async ($, on) => {
-  const { files, toasts } = world(on, { '.gitignore': 'node_modules/' })
+test('the todo and backlog commands change the lists and open the list pane', async ($, on) => {
+  const { files, opens } = world(on, { '.gitignore': 'node_modules/' })
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  // The toast's rows after its title, with the padding squeezed out.
-  const rows = () => toasts.at(-1)!.split('\n').slice(1).map(row => row.split(' ').filter(Boolean).join(' '))
+  const summaries = (path: string) => (files[path] ?? '').split('\n').filter(line => line.startsWith('- ')).map(line => line.slice(2))
+  const todo = () => summaries('.pocketbook/todo.md')
 
   expect(await pocketbook($, 'todo')).toBeUndefined()
-  expect(rows()).toEqual(['The list is empty.'])
+  expect(opens.at(-1)).toEqual({ id: 'pocketbook-list', title: 'Todo', closeOnEscape: true })
   await pocketbook($, 'todo -add first task')
   await pocketbook($, 'todo -add second task')
   expect(await pocketbook($, 'todo -add third task')).toBe('Added.')
-  expect(rows()).toEqual(['first task [1]', 'second task [2]', 'third task [3]'])
+  expect(todo()).toEqual(['first task', 'second task', 'third task'])
   expect(files['.gitignore']).toBe('node_modules/\n.pocketbook/\n') // added once, not once per write
 
   expect(await pocketbook($, 'stash 2')).toBe('Moved to the backlog: second task')
-  expect(rows()).toEqual(['first task [1]', 'third task [2]'])
+  expect(todo()).toEqual(['first task', 'third task'])
+  expect(summaries('.pocketbook/backlog.md')).toEqual(['second task'])
   expect(await pocketbook($, 'todo -remove 1')).toBe('Removed: first task')
-  expect(rows()).toEqual(['third task [1]'])
+  expect(todo()).toEqual(['third task'])
   expect(await pocketbook($, 'todo -remove 5')).toBe('Give the number of an item, 1 to 1.')
   expect(await pocketbook($, 'archive')).toBe('Moved 1 to the backlog.')
-  expect(rows()).toEqual(['The list is empty.'])
+  expect(todo()).toEqual([])
   expect(await pocketbook($, 'backlog')).toBeUndefined()
-  expect(toasts.at(-1)).toContain(' BACKLOG ')
-  expect(rows()).toEqual(['second task [1]', 'third task [2]'])
+  expect(opens.at(-1)?.title).toBe('Backlog')
+  expect(summaries('.pocketbook/backlog.md')).toEqual(['second task', 'third task'])
 })
 
 test('mode:: changes the mode and keeps it', async ($, on) => {

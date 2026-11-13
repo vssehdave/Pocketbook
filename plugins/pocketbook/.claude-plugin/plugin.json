@@ -1,6 +1,6 @@
 {
   "name": "pocketbook",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Keeps a conversation inside context limits picked from your own history: a footer meter, a soft limit that holds large tasks on a todo list, and compaction at a hard limit.",
   "license": "MIT",
   "types": "./types/index.d.ts"
