@@ -167,7 +167,7 @@ test('the first session works the limits out from the compaction window and keep
 
 test('the show button opens the list pane, which shows each item with its number', async ($, on) => {
   const opens: Array<{ id: string; title: string; closeOnEscape?: true }> = []
-  const files: Record<string, string> = { '.pocketbook/todo.md': '# Pocketbook todo\n\n- Fix the typo\n- Write the notes\n' }
+  const files: Record<string, string> = { '.pocketbook/bookmark.md': '# Pocketbook bookmark\n\n- Fix the typo\n- Write the notes\n' }
   const at = (path: string) => Object.keys(files).find(key => path.replaceAll(String.fromCharCode(92), '/').endsWith(key)) ?? ''
   const kept: Record<string, unknown> = { conf: CONF }
   on('store.get', (_, e) => ({ value: kept[e.key] }))
@@ -190,27 +190,27 @@ test('the show button opens the list pane, which shows each item with its number
   const footer = await $.ui.mount(SLOT)
 
   await footer.press({ key: 'show' })
-  expect(opens).toEqual([{ id: 'pocketbook-list', title: 'Todo', closeOnEscape: true }])
+  expect(opens).toEqual([{ id: 'pocketbook-list', title: 'Bookmark', closeOnEscape: true }])
   await footer.unmount()
 
   const pane = await $.ui.mount({ plugin: 'pocketbook', component: 'Pane', requestId: 'pocketbook-list', surface: 'terminal', props: {} })
 
-  expect((await pane.find({ type: 'Text', text: /TODO/ }))?.text).toBe(' TODO ')
+  expect((await pane.find({ type: 'Text', text: /BOOKMARK/ }))?.text).toBe(' BOOKMARK ')
   expect((await pane.find({ type: 'Text', text: /typo/ }))?.text).toBe('Fix the typo')
-  expect((await pane.find({ type: 'Text', text: /2/ }))?.text).toBe('[t2]')
-  expect((await pane.find({ type: 'Text', text: /BACKLOG/ }))?.text).toBe(' BACKLOG ') // the backlog follows in the same pane
+  expect((await pane.find({ type: 'Text', text: /2/ }))?.text).toBe('[b2]')
+  expect((await pane.find({ type: 'Text', text: /SHELF/ }))?.text).toBe(' SHELF ') // the shelf follows in the same pane
   expect((await pane.find({ type: 'Text', text: /empty/ }))?.text).toBe('The list is empty.')
-  await pane.press({ key: 'open:TODO:2' }) // the number opens the item
-  expect((await pane.find({ type: 'Text', text: /TODO #2/ }))?.text).toBe(' TODO #2 ')
+  await pane.press({ key: 'open:BOOKMARK:2' }) // the number opens the item
+  expect((await pane.find({ type: 'Text', text: /BOOKMARK #2/ }))?.text).toBe(' BOOKMARK #2 ')
   expect((await pane.find({ type: 'Text', text: /Write the notes/ }))?.text).toBe('Write the notes')
   await pane.press({ key: 'back' })
-  expect((await pane.find({ type: 'Text', text: /BACKLOG/ }))?.text).toBe(' BACKLOG ')
+  expect((await pane.find({ type: 'Text', text: /SHELF/ }))?.text).toBe(' SHELF ')
   await pane.unmount()
 })
 
 test('a list longer than its half of the pane is paged with its own arrows', async ($, on) => {
   const many = Array.from({ length: 14 }, (_, i) => `- item ${i + 1}`).join(String.fromCharCode(10))
-  const files: Record<string, string> = { '.pocketbook/todo.md': `# Pocketbook todo${String.fromCharCode(10, 10)}${many}${String.fromCharCode(10)}` }
+  const files: Record<string, string> = { '.pocketbook/bookmark.md': `# Pocketbook bookmark${String.fromCharCode(10, 10)}${many}${String.fromCharCode(10)}` }
   const at = (path: string) => Object.keys(files).find(key => path.replaceAll(String.fromCharCode(92), '/').endsWith(key)) ?? ''
   on('fs.exists', (_, e) => ({ value: at(e.path) !== '' }))
   on('fs.read', (_, e) => ({ value: files[at(e.path)] }))
@@ -218,10 +218,10 @@ test('a list longer than its half of the pane is paged with its own arrows', asy
 
   expect(await pane.find({ type: 'Text', text: /^item 2$/ })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: /^item 3$/ })).toBeUndefined() // each half has room for two items at this height
-  expect(await pane.find({ type: 'Button', key: 'up:TODO' })).toBeUndefined() // nothing before the first page
-  expect(await pane.find({ type: 'Button', key: 'down:BACKLOG' })).toBeUndefined() // the backlog is empty and has no pages
-  await pane.press({ key: 'down:TODO' })
+  expect(await pane.find({ type: 'Button', key: 'up:BOOKMARK' })).toBeUndefined() // nothing before the first page
+  expect(await pane.find({ type: 'Button', key: 'down:SHELF' })).toBeUndefined() // the shelf is empty and has no pages
+  await pane.press({ key: 'down:BOOKMARK' })
   expect(await pane.find({ type: 'Text', text: /^item 3$/ })).toBeDefined()
-  expect(await pane.find({ type: 'Button', key: 'up:TODO' })).toBeDefined()
+  expect(await pane.find({ type: 'Button', key: 'up:BOOKMARK' })).toBeDefined()
   await pane.unmount()
 })

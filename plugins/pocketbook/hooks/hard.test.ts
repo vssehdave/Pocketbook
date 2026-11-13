@@ -82,7 +82,7 @@ test('with nothing in the background, the reply that passes the hard limit is fo
 
   expect(seen.compactions).toBe(1)
   expect(seen.status).toBeUndefined()
-  expect(seen.prompts).toEqual([]) // an empty todo list starts nothing
+  expect(seen.prompts).toEqual([]) // an empty bookmark list starts nothing
   expect(seen.kept.history).toEqual({ count: 1, saved: 280_000 }) // 310K before, the usual 30K after
 })
 
@@ -96,7 +96,7 @@ test('lite never compacts', async ($, on) => {
   expect((await $.prompt.submit({ text: 'carry on' })).drop).toBeUndefined()
 })
 
-test('with a shell in the background the conversation is held, prompts are kept on the todo list, and it is compacted once the shell ends', async ($, on) => {
+test('with a shell in the background the conversation is held, prompts are kept on the bookmark list, and it is compacted once the shell ends', async ($, on) => {
   const { seen, clock } = await session($, on, 'auto')
   await $.tool.call({ tool: 'Bash', command: 'npm run build', run_in_background: true })
 
@@ -122,7 +122,7 @@ test('with a shell in the background the conversation is held, prompts are kept 
   expect(seen.status).toBeUndefined()
   expect(seen.opens).toEqual([]) // and the list is never a log row
   expect(seen.logs.join('\n')).not.toContain('login page')
-  expect(seen.prompts.at(-1)).toContain('Work on the first item on the todo list now:')
+  expect(seen.prompts.at(-1)).toContain('Work on the first item on the bookmark list now:')
 })
 
 test('force: lets a prompt through while held and forgets the shells counted', async ($, on) => {
@@ -146,7 +146,7 @@ test('a compaction the person asks for is never refused, and only tells them wha
   expect((await $.session.compact({ trigger: 'manual', messages: MESSAGES })).skip).toBeUndefined()
   await clock.settle()
   expect(seen.prompts).toEqual([]) // nothing starts: the person decides
-  expect(seen.logs.at(-1)).toBe('You have 1 item on the todo list. Run /pocketbook todo to see it, or /pocketbook work to have it worked through one at a time.')
+  expect(seen.logs.at(-1)).toBe('You have 1 item on the bookmark list. Run /pocketbook bookmark to see it, or /pocketbook work to have it worked through one at a time.')
 })
 
 test('after its own compaction a run hands over the first item, then the next once the first is gone, and stops when an item is left as it was', async ($, on) => {
@@ -162,8 +162,8 @@ test('after its own compaction a run hands over the first item, then the next on
   await clock.settle()
   expect(seen.prompts.at(-1)).toContain('first task')
 
-  const todoFile = Object.keys(seen.files).find(path => path.endsWith('todo.md') && path.length > '.pocketbook/todo.md'.length)! // the engine names the file in full
-  seen.files[todoFile] ='# Pocketbook todo\n\n- second task\n- third task\n' // the first was done
+  const bookmarkFile = Object.keys(seen.files).find(path => path.endsWith('bookmark.md') && path.length > '.pocketbook/bookmark.md'.length)! // the engine names the file in full
+  seen.files[bookmarkFile] ='# Pocketbook bookmark\n\n- second task\n- third task\n' // the first was done
   await $.turn.complete(TURN)
   await clock.settle()
   expect(seen.prompts.at(-1)).toContain('second task')
@@ -172,7 +172,7 @@ test('after its own compaction a run hands over the first item, then the next on
   await $.turn.complete(TURN) // the second is still there: the run stops
   await clock.settle()
   expect(seen.prompts.length).toBe(sent)
-  expect(seen.logs.at(-1)).toBe('Stopped: the first item is still on the todo list. Run /pocketbook work to go on.')
+  expect(seen.logs.at(-1)).toBe('Stopped: the first item is still on the bookmark list. Run /pocketbook work to go on.')
 })
 
 test('a reply is never compacted under way: not at a tool call, not when a subagent finishes', async ($, on) => {
@@ -187,7 +187,7 @@ test('a reply is never compacted under way: not at a tool call, not when a subag
 
 test('off starts nothing on its own after a compaction, but /pocketbook work still goes ahead', async ($, on) => {
   const { seen, clock } = await session($, on, 'off')
-  await $.command.run({ command: 'pocketbook', args: 'todo -add write the docs' })
+  await $.command.run({ command: 'pocketbook', args: 'bookmark -add write the docs' })
   await $.session.compact({ trigger: 'manual', messages: MESSAGES })
   await clock.settle()
   expect(seen.prompts).toEqual([])

@@ -2,8 +2,10 @@
 // done is deleted, so the file only ever holds what is still open.
 export type Item = { summary: string; full: string }
 
-export const TODO = '.pocketbook/todo.md'
-export const BACKLOG = '.pocketbook/backlog.md'
+export const BOOKMARK = '.pocketbook/bookmark.md'
+export const SHELF = '.pocketbook/shelf.md'
+// The files the lists had before they were renamed: read when the new file is not there yet, so nobody's list is lost.
+export const LEGACY: Record<string, string> = { [BOOKMARK]: '.pocketbook/todo.md', [SHELF]: '.pocketbook/backlog.md' }
 
 export const parse = (text: string): Item[] => {
   const items: Array<{ summary: string; body: string[] }> = []
@@ -46,14 +48,14 @@ export const summaryOf = (text: string) => {
   return line.length > SUMMARY ? `${line.slice(0, SUMMARY).trimEnd()}...` : line
 }
 
-// Each summary and its reference (t1, t2 for the todo list), for a prompt to the model.
-export const listing = (items: readonly Item[], letter = 't') => items.map((item, at) => `${item.summary} [${letter}${at + 1}]`).join('\n')
+// Each summary and its reference (b1, b2 for the bookmark list), for a prompt to the model.
+export const listing = (items: readonly Item[], letter = 'b') => items.map((item, at) => `${item.summary} [${letter}${at + 1}]`).join('\n')
 
-// The item a reference names: t3 the third todo item, b2 the second backlog item. Nothing when it is not one.
+// The item a reference names: b3 the third bookmark item, s2 the second shelf item. Nothing when it is not one.
 export const refOf = (typed: string) => {
-  const ref = /^([tb])(\d+)$/i.exec(typed.trim())
+  const ref = /^([bs])(\d+)$/i.exec(typed.trim())
 
-  return ref === null ? undefined : { list: ref[1]!.toLowerCase() === 't' ? ('TODO' as const) : ('BACKLOG' as const), n: Number(ref[2]) }
+  return ref === null ? undefined : { list: ref[1]!.toLowerCase() === 'b' ? ('BOOKMARK' as const) : ('SHELF' as const), n: Number(ref[2]) }
 }
 
 // The item a number typed by the person names, or nothing when there is none there.
@@ -66,8 +68,8 @@ export const pick = (items: readonly Item[], typed: string) => {
 // What the model is handed to work from. The list shows one-line summaries, which leave out names and pasted data on purpose, so it is
 // told to read the full request under each item in the file.
 export const handOver = (intro: string, items: readonly Item[]) =>
-  `${intro} Work through the todo list in ${TODO} one item at a time, and delete each item from the file as soon as it is done. Each item's full request is under it in the file: read it before starting, because the summary leaves things out.\n${listing(items)}`
+  `${intro} Work through the bookmark list in ${BOOKMARK} one item at a time, and delete each item from the file as soon as it is done. Each item's full request is under it in the file: read it before starting, because the summary leaves things out.\n${listing(items)}`
 
 // The one item a run hands over: the first on the list, which the person may have changed since by removing or moving items.
 export const nextItem = (items: readonly Item[]) =>
-  `Work on the first item on the todo list now: ${items[0]!.summary} Its full request is under it in ${TODO}: read it before starting, and delete the item from the file when it is done. Go by the file as it is now, since items can be removed at any time.`
+  `Work on the first item on the bookmark list now: ${items[0]!.summary} Its full request is under it in ${BOOKMARK}: read it before starting, and delete the item from the file when it is done. Go by the file as it is now, since items can be removed at any time.`

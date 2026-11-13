@@ -62,14 +62,14 @@ export const limitsOf = (conf: Conf, mode: Mode): { soft?: number; hard?: number
 
 // What the person sees in the status line once the soft limit is passed.
 export const softNote = (tokens: number, limit: number) =>
-  `Soft limit reached: ${K(tokens)} of ${K(limit)} used, ${K(Math.max(0, limit - tokens))} left. Small and medium tasks only; larger ones go to the todo list.`
+  `Soft limit reached: ${K(tokens)} of ${K(limit)} used, ${K(Math.max(0, limit - tokens))} left. Small and medium tasks only; larger ones go to the bookmark list.`
 
 // What the model is told beside each prompt once the soft limit is passed. It cannot be handed a task's size, so it is given the
 // room left and a share of it to stay under, and where to put what does not fit.
-export const rule = (tokens: number, limit: number, todo: string) => {
+export const rule = (tokens: number, limit: number, bookmark: string) => {
   const room = Math.max(0, limit - tokens)
 
-  return `Pocketbook: this conversation holds about ${K(tokens)} tokens of a ${K(limit)} limit, so about ${K(room)} are left. Start nothing you expect to need more than a third of that: about ${K(room / 3)} tokens of reading, tool output and writing. A small or medium request: do it. A request that needs more: do not start it. Append it to ${todo} as an item (a line "- <one-line summary>", then the full request on lines indented by two spaces), tell the user it is on the todo list and will be picked up once the conversation is compacted, and stop. When you finish something that is on that list, delete its item from the file.`
+  return `Pocketbook: this conversation holds about ${K(tokens)} tokens of a ${K(limit)} limit, so about ${K(room)} are left. Start nothing you expect to need more than a third of that: about ${K(room / 3)} tokens of reading, tool output and writing. A small or medium request: do it. A request that needs more: do not start it. Append it to ${bookmark} as an item (a line "- <one-line summary>", then the full request on lines indented by two spaces), tell the user it is on the bookmark list and will be picked up once the conversation is compacted, and stop. When you finish something that is on that list, delete its item from the file.`
 }
 
 // One mode's limits as a line: its name, then where it notes and where it compacts.

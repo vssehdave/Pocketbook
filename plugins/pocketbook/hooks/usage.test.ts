@@ -54,9 +54,9 @@ const session = async ($: any, on: any) => {
 const measure = ($: any, percentUsed: number, kind = 'five_hour') =>
   $.session.measure({ context: { window: 1_000_000, tokens: 60_000 }, rateLimits: [{ kind, percentUsed, resetsAt: '2026-11-12T12:00:00Z' }], changed: ['rateLimits'] })
 
-const add = ($: any, text: string) => $.command.run({ command: 'pocketbook', args: `todo -add ${text}` })
+const add = ($: any, text: string) => $.command.run({ command: 'pocketbook', args: `bookmark -add ${text}` })
 
-test('near the end of a window the todo list is shown once, with the word that -add keeps working', async ($, on) => {
+test('near the end of a window the bookmark list is shown once, with the word that -add keeps working', async ($, on) => {
   const seen = await session($, on)
   await add($, 'first task')
 
@@ -66,7 +66,7 @@ test('near the end of a window the todo list is shown once, with the word that -
   await measure($, 96)
 
   expect(seen.logs.join('\n')).toContain('95% of the five-hour limit')
-  expect(seen.opens).toEqual(['Todo']) // only by the one -add typed above, never by the warning
+  expect(seen.opens).toEqual(['Bookmark']) // only by the one -add typed above, never by the warning
   expect(seen.logs.join('\n')).not.toContain('first task') // the list is in its pane, not a log row
   expect(seen.logs.every(line => !line.includes('\n'))).toBe(true) // one row a line: the engine garbles a break inside one
   await measure($, 97)
@@ -83,7 +83,7 @@ test('with usage out, -add keeps the request as its first line and asks no model
   expect(answer).toContain('Added.')
 })
 
-test('a todo added during a reply is handed to the model when the reply ends', async ($, on) => {
+test('a bookmark added during a reply is handed to the model when the reply ends', async ($, on) => {
   const seen = await session($, on)
   await $.turn.start({ text: 'work', turnId: 't' })
   await add($, 'second task')
@@ -92,10 +92,10 @@ test('a todo added during a reply is handed to the model when the reply ends', a
   await seen.clock.advance(250) // the hand-over is not awaited by the hook
 
   expect(seen.prompts).toHaveLength(1)
-  expect(seen.prompts[0]!.text).toContain('second task [t1]')
+  expect(seen.prompts[0]!.text).toContain('second task [b1]')
 })
 
-test('a todo added when no reply is running starts nothing', async ($, on) => {
+test('a bookmark added when no reply is running starts nothing', async ($, on) => {
   const seen = await session($, on)
   await add($, 'idle task')
   await $.turn.start({ text: 'work', turnId: 't' })
@@ -116,5 +116,5 @@ test('with usage out the reply is not followed by a prompt; the next prompt carr
 
   await $.prompt.submit({ text: 'carry on' })
 
-  expect(seen.prompts.at(-1)!.context?.join(' ')).toContain('todo items were added while you worked')
+  expect(seen.prompts.at(-1)!.context?.join(' ')).toContain('bookmark items were added while you worked')
 })

@@ -1,12 +1,12 @@
 {
   "name": "pocketbook",
-  "version": "0.8.0",
-  "description": "A todo list and backlog for long conversations, kept in .pocketbook/.",
+  "version": "0.9.0",
+  "description": "A bookmark list and shelf for long conversations, kept in .pocketbook/.",
   "author": { "name": "Veertej Sehdave", "url": "https://github.com/vssehdave" },
   "homepage": "https://github.com/vssehdave/Pocketbook",
   "repository": "https://github.com/vssehdave/Pocketbook",
   "license": "MIT",
-  "keywords": ["todo", "backlog", "queue"],
+  "keywords": ["bookmark", "shelf", "queue"],
   "skills": "./skills/",
   "hooks": { "version": 1, "hooks": {} }
 }
