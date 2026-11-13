@@ -5,7 +5,7 @@ import type { Conf, Meter, Mode, Units } from '../types'
 import { K, MODES, band, ceilingOf, defaults, isMode, leftOf, limitsOf, modeColor, modeLine, modeReport, rule, softNote, usedText } from './lib'
 import type { History } from './lib'
 import { COMPACTED, PATTERN, confFor, hardLimit, sizesOf, suggested, table, tokensIn } from './analysis'
-import { BACKLOG, TODO, handOver, listing, nextItem, oneLine, parse, pick, scrub, serialize, summaryOf } from './todo'
+import { BACKLOG, TODO, handOver, listing, nextItem, refOf, oneLine, parse, pick, scrub, serialize, summaryOf } from './todo'
 import type { Item } from './todo'
 
 const meter = atom({ plugin: 'pocketbook', key: 'meter' } as const, null as Meter)
@@ -490,20 +490,38 @@ const USAGE = `Pocketbook commands:
   setup               pick the limits from your own history
   setup -units [tokens|%]  switch the footer between tokens and percent
   mode::<name>        off, lite, auto or ultra
-  details -todo|-backlog <n>  show the whole request of an item
-  edit t<n>|b<n> [text]  change an item: with no text its request goes in the prompt box to edit
   todo                show the todo list
   todo -add <text>    add to it
-  todo -remove <n>    remove item n
-  stash <n>           move item n to the backlog
-  stash -all          move the whole todo list to the backlog
   backlog             show the backlog
   backlog -add <text>   add to it
-  backlog -remove <n>   remove item n
-  todo|backlog -remove -all  remove every item from that list
-  unstash <n>         move item n back to the todo list
-  unstash -all        move the whole backlog to the todo list
-  work [n]            hand the todo list, or item n, to the model now`
+  details t<n>|b<n>   show the whole request of an item
+  edit t<n>|b<n> [text]  change an item: with no text its request goes in the prompt box to edit
+  remove t<n>|b<n>    remove an item
+  remove t|b -all     remove every item from the todo list (t) or the backlog (b)
+  push t<n>           put a todo item on the backlog
+  push -all           put the whole todo list on the backlog
+  pop b<n>            bring a backlog item back to the todo list
+  pop -all            bring the whole backlog back
+  work [t<n>]         hand the todo list, or item n, to the model now
+  Items are named by their list and place: t3 is the third todo item, b2 the second backlog item.`
+
+// The item a reference names, with its list as it is now; or what to tell the person when it names none.
+async function itemOf($: any, typed: string): Promise<{ list: 'TODO' | 'BACKLOG'; kept: Item[]; at: number } | string> {
+  const ref = refOf(typed)
+
+  if (ref === undefined) {
+    return 'Name the item by its list and number: t<n> for the todo list, b<n> for the backlog.'
+  }
+
+  const kept = await readList($, ref.list === 'TODO' ? TODO : BACKLOG)
+  const at = pick(kept, String(ref.n))
+
+  if (at === undefined) {
+    return kept.length === 0 ? `The ${ref.list.toLowerCase()} list is empty.` : `Give the number of an item, 1 to ${kept.length}.`
+  }
+
+  return { list: ref.list, kept, at }
+}
 
 // What /pocketbook answers for the words typed after it.
 async function run($: any, args: string): Promise<string> {
@@ -535,63 +553,76 @@ async function run($: any, args: string): Promise<string> {
     return setup($, rest)
   }
 
+  // An item is named by its list and its place: t3 is the third todo item, b2 the second backlog item.
   if (word === 'details') {
-    const list = restWords[0] === '-todo' ? 'TODO' : restWords[0] === '-backlog' ? 'BACKLOG' : undefined
+    const found = await itemOf($, restWords[0] ?? '')
 
-    if (list === undefined) {
-      return 'Say which list: details -todo <n> or details -backlog <n>.'
+    if (typeof found === 'string') {
+      return found
     }
 
-    const kept = await readList($, list === 'TODO' ? TODO : BACKLOG)
-    const at = pick(kept, restWords[1] ?? '')
-
-    if (at === undefined) {
-      return kept.length === 0 ? `The ${list.toLowerCase()} list is empty.` : `Give the number of an item, 1 to ${kept.length}.`
-    }
-
-    await showDetail($, list, at + 1)
+    await showDetail($, found.list, found.at + 1)
 
     return ''
   }
 
   // edit t2 or edit b3: with no text the item's whole request is put in the prompt box as a draft to change and send back; with text
-  // the item is rewritten. The first letter says the list, t for todo and b for backlog.
+  // the item is rewritten.
   if (word === 'edit') {
-    const typed = /^([tb])(\d+)\s*([\s\S]*)$/i.exec(rest)
+    const found = await itemOf($, restWords[0] ?? '')
 
-    if (typed === null) {
-      return 'Say which item: edit t<n> for the todo list or edit b<n> for the backlog, then the new text.'
+    if (typeof found === 'string') {
+      return found
     }
 
-    const letter = typed[1]!.toLowerCase()
-    const list = letter === 't' ? 'TODO' : 'BACKLOG'
-    const path = list === 'TODO' ? TODO : BACKLOG
-    const kept = await readList($, path)
-    const at = pick(kept, typed[2]!)
-
-    if (at === undefined) {
-      return kept.length === 0 ? `The ${list.toLowerCase()} list is empty.` : `Give the number of an item, 1 to ${kept.length}.`
-    }
-
-    const text = typed[3]!.trim()
+    const tag = restWords[0]!.toLowerCase()
+    const text = rest.slice(restWords[0]!.length).trim()
 
     if (text === '') {
-      const filled = await $.prompt.fill({ text: `/pocketbook edit ${letter}${typed[2]} ${kept[at]!.full}` }).catch(() => undefined)
+      const filled = await $.prompt.fill({ text: `/pocketbook edit ${tag} ${found.kept[found.at]!.full}` }).catch(() => undefined)
 
-      return filled?.isFilled ? '' : `The prompt box is not available here. Type /pocketbook edit ${letter}${typed[2]} and then the new text.`
+      return filled?.isFilled ? '' : `The prompt box is not available here. Type /pocketbook edit ${tag} and then the new text.`
     }
 
     const edited = { summary: await summarize($, text), full: text }
-    await writeList($, path, kept.map((item, i) => (i === at ? edited : item)))
-    await showList($, list)
+    await writeList($, found.list === 'TODO' ? TODO : BACKLOG, found.kept.map((item, i) => (i === found.at ? edited : item)))
+    await showList($, found.list)
 
     return 'Edited.'
   }
 
+  // remove t3, remove b2, or remove t -all to empty a list.
+  if (word === 'remove') {
+    const whole = /^([tb])$/i.exec(restWords[0] ?? '')
+
+    if (whole !== null && restWords[1] === '-all') {
+      const list = whole[1]!.toLowerCase() === 't' ? 'TODO' : 'BACKLOG'
+      const kept = await readList($, list === 'TODO' ? TODO : BACKLOG)
+
+      if (kept.length === 0) {
+        return `The ${list.toLowerCase()} list is empty.`
+      }
+
+      await writeList($, list === 'TODO' ? TODO : BACKLOG, [])
+      await showList($, list)
+
+      return `Removed all ${kept.length} from the ${list === 'TODO' ? 'todo list' : 'backlog'}.`
+    }
+
+    const found = await itemOf($, restWords[0] ?? '')
+
+    if (typeof found === 'string') {
+      return found
+    }
+
+    await writeList($, found.list === 'TODO' ? TODO : BACKLOG, found.kept.filter((_, i) => i !== found.at))
+    await showList($, found.list)
+
+    return `Removed: ${found.kept[found.at]!.summary}`
+  }
+
   if (word === 'todo' || word === 'backlog') {
     const list = word === 'todo' ? 'TODO' : 'BACKLOG'
-    const path = list === 'TODO' ? TODO : BACKLOG
-    const kept = await readList($, path)
 
     if (rest === '') {
       await showList($, list)
@@ -612,45 +643,32 @@ async function run($: any, args: string): Promise<string> {
       return 'Added.'
     }
 
-    if (restWords[0] === '-remove' && restWords[1] === '-all') {
-      if (kept.length === 0) {
-        return `The ${word} list is empty.`
-      }
-
-      await writeList($, path, [])
-      await showList($, list)
-
-      return `Removed all ${kept.length} from the ${word === 'todo' ? 'todo list' : 'backlog'}.`
-    }
-
-    if (restWords[0] === '-remove') {
-      const at = pick(kept, restWords[1] ?? '')
-
-      if (at === undefined) {
-        return kept.length === 0 ? `The ${word} list is empty.` : `Give the number of an item, 1 to ${kept.length}.`
-      }
-
-      await writeList($, path, kept.filter((_, i) => i !== at))
-      await showList($, list)
-
-      return `Removed: ${kept[at]!.summary}`
-    }
-
     return USAGE
   }
 
-  // Hands the todo list (or one item of it) to the model now. Past the soft limit the model is told to start nothing large, so the
-  // conversation is compacted first, and the hand-over after the compaction carries the list.
+  // Hands the todo list (or one item of it, work t2) to the model now. Past the soft limit the model is told to start nothing large, so
+  // the conversation is compacted first, and the hand-over after the compaction carries the list.
   if (word === 'work') {
     const items = await readList($, TODO)
-    const at = rest === '' ? -1 : pick(items, rest)
 
     if (items.length === 0) {
       return 'The todo list is empty.'
     }
 
-    if (rest !== '' && at === undefined) {
-      return `Give the number of an item, 1 to ${items.length}.`
+    let one: Item | undefined
+
+    if (rest !== '') {
+      const found = await itemOf($, restWords[0] ?? '')
+
+      if (typeof found === 'string') {
+        return found
+      }
+
+      if (found.list !== 'TODO') {
+        return 'work takes a todo item: work t<n>.'
+      }
+
+      one = found.kept[found.at]
     }
 
     if ((await read($, usage)) >= OUT) {
@@ -661,30 +679,52 @@ async function run($: any, args: string): Promise<string> {
       return 'Past the soft limit: compacted first, and the list is handed over now.'
     }
 
-    if (at === undefined || at === -1) {
+    if (one === undefined) {
       await startRun($)
 
       return `Started on ${items.length} item${items.length === 1 ? '' : 's'}.`
     }
 
-    const one = items[at]!
     void $.prompt.submit({ text: `Work on this todo item now: ${one.summary} Its full request is under it in ${TODO}: read it before starting, and delete the item from the file when it is done.` }).catch(() => undefined)
 
     return `Started on: ${one.summary}`
   }
 
-  // stash goes from the todo list to the backlog, unstash comes back; with -all it moves the whole list.
-  if ((word === 'stash' || word === 'unstash') && rest !== '-all') {
-    const [from, to] = word === 'stash' ? [TODO, BACKLOG] : [BACKLOG, TODO]
-    const source = await readList($, from)
-    const at = pick(source, rest)
+  // push puts a todo item on the backlog shelf, pop takes one back off it; with -all they move the whole list.
+  if (word === 'push' || word === 'pop') {
+    const [mine, from, to] = word === 'push' ? (['TODO', TODO, BACKLOG] as const) : (['BACKLOG', BACKLOG, TODO] as const)
 
-    if (at === undefined) {
-      return source.length === 0 ? `The ${from === TODO ? 'todo' : 'backlog'} list is empty.` : `Give the number of an item, 1 to ${source.length}.`
+    if (rest === '-all') {
+      const source = await readList($, from)
+
+      if (source.length === 0) {
+        return `The ${mine.toLowerCase()} list is empty.`
+      }
+
+      await writeList($, to, [...(await readList($, to)), ...source])
+      await writeList($, from, [])
+
+      if (to === TODO) {
+        await noteAdded($)
+      }
+
+      await showList($)
+
+      return `Moved ${source.length} to the ${to === TODO ? 'todo list' : 'backlog'}.`
     }
 
-    await writeList($, to, [...(await readList($, to)), source[at]!]) // into the other list first, so a failure leaves a copy, not a loss
-    await writeList($, from, source.filter((_, i) => i !== at))
+    const found = await itemOf($, restWords[0] ?? '')
+
+    if (typeof found === 'string') {
+      return found
+    }
+
+    if (found.list !== mine) {
+      return word === 'push' ? 'push moves a todo item to the backlog: push t<n>, or push -all.' : 'pop brings a backlog item back to the todo list: pop b<n>, or pop -all.'
+    }
+
+    await writeList($, to, [...(await readList($, to)), found.kept[found.at]!]) // into the other list first, so a failure leaves a copy, not a loss
+    await writeList($, from, found.kept.filter((_, i) => i !== found.at))
 
     if (to === TODO) {
       await noteAdded($)
@@ -692,27 +732,7 @@ async function run($: any, args: string): Promise<string> {
 
     await showList($)
 
-    return `Moved to the ${to === TODO ? 'todo list' : 'backlog'}: ${source[at]!.summary}`
-  }
-
-  if ((word === 'stash' || word === 'unstash') && rest === '-all') {
-    const [from, to] = word === 'stash' ? [TODO, BACKLOG] : [BACKLOG, TODO]
-    const source = await readList($, from)
-
-    if (source.length === 0) {
-      return `The ${from === TODO ? 'todo' : 'backlog'} list is empty.`
-    }
-
-    await writeList($, to, [...(await readList($, to)), ...source])
-    await writeList($, from, [])
-
-    if (to === TODO) {
-      await noteAdded($)
-    }
-
-    await showList($)
-
-    return `Moved ${source.length} to the ${to === TODO ? 'todo list' : 'backlog'}.`
+    return `Moved to the ${to === TODO ? 'todo list' : 'backlog'}: ${found.kept[found.at]!.summary}`
   }
 
   return USAGE
@@ -739,7 +759,7 @@ async function loadConf($: any) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
-    await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | mode::<name> | todo | todo -add <text> | todo -remove <n> | stash <n> | stash -all | backlog | backlog -add <text> | backlog -remove <n> | unstash <n> | unstash -all | work [n] | edit t<n>|b<n> [text] | details -todo|-backlog <n>]' })
+    await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | mode::<name> | todo | todo -add <text> | backlog | backlog -add <text> | details t<n>|b<n> | edit t<n>|b<n> [text] | remove t<n>|b<n> | remove t|b -all | push t<n> | push -all | pop b<n> | pop -all | work [t<n>]]' })
     await loadConf($)
     await update($, isTurn, () => false)
     // Lists already there are put under .gitignore now, not only when next written; a filesystem that will not say is left be.
@@ -1002,7 +1022,7 @@ export const register: Register = on => {
                 <Text>{item.summary}</Text>
               </Box>
               <Button key={`open:${title}:${start + i + 1}`} plain onPress={() => void showDetail($, title, start + i + 1)}>
-                <Text dimColor>{`[${start + i + 1}]`}</Text>
+                <Text dimColor>{`[${title === 'TODO' ? 't' : 'b'}${start + i + 1}]`}</Text>
               </Button>
             </Box>
           ))}

@@ -1,6 +1,6 @@
 {
   "name": "pocketbook",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "A todo list and backlog for long conversations. Type pb todo -add <text> at any time, even mid-reply or with usage used up, and the item waits on the list until the agent gets to it.",
   "author": {
     "name": "Veertej Sehdave",

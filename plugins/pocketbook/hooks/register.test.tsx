@@ -197,7 +197,7 @@ test('the show button opens the list pane, which shows each item with its number
 
   expect((await pane.find({ type: 'Text', text: /TODO/ }))?.text).toBe(' TODO ')
   expect((await pane.find({ type: 'Text', text: /typo/ }))?.text).toBe('Fix the typo')
-  expect((await pane.find({ type: 'Text', text: /2/ }))?.text).toBe('[2]')
+  expect((await pane.find({ type: 'Text', text: /2/ }))?.text).toBe('[t2]')
   expect((await pane.find({ type: 'Text', text: /BACKLOG/ }))?.text).toBe(' BACKLOG ') // the backlog follows in the same pane
   expect((await pane.find({ type: 'Text', text: /empty/ }))?.text).toBe('The list is empty.')
   await pane.press({ key: 'open:TODO:2' }) // the number opens the item

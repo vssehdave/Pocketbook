@@ -48,13 +48,13 @@ test('the todo and backlog commands change the lists and open the list pane', as
   expect(todo()).toEqual(['first task', 'second task', 'third task'])
   expect(files['.gitignore']).toBe('node_modules/\n.pocketbook/\n') // added once, not once per write
 
-  expect(await pocketbook($, 'stash 2')).toBe('Moved to the backlog: second task')
+  expect(await pocketbook($, 'push t2')).toBe('Moved to the backlog: second task')
   expect(todo()).toEqual(['first task', 'third task'])
   expect(summaries('.pocketbook/backlog.md')).toEqual(['second task'])
-  expect(await pocketbook($, 'todo -remove 1')).toBe('Removed: first task')
+  expect(await pocketbook($, 'remove t1')).toBe('Removed: first task')
   expect(todo()).toEqual(['third task'])
-  expect(await pocketbook($, 'todo -remove 5')).toBe('Give the number of an item, 1 to 1.')
-  expect(await pocketbook($, 'stash -all')).toBe('Moved 1 to the backlog.')
+  expect(await pocketbook($, 'remove t5')).toBe('Give the number of an item, 1 to 1.')
+  expect(await pocketbook($, 'push -all')).toBe('Moved 1 to the backlog.')
   expect(todo()).toEqual([])
   expect(await pocketbook($, 'backlog')).toBeUndefined()
   expect(opens.at(-1)?.id).toBe('pocketbook-list')
@@ -65,11 +65,11 @@ test('work starts the whole list or one item, and refuses a bad number or an emp
   world(on, { '.pocketbook/todo.md': '# Pocketbook todo\n\n- first\n  the full first request\n- second\n' })
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
-  expect(await pocketbook($, 'work 9')).toBe('Give the number of an item, 1 to 2.')
+  expect(await pocketbook($, 'work t9')).toBe('Give the number of an item, 1 to 2.')
   expect(await pocketbook($, 'work')).toBe('Started on 2 items.')
-  expect(await pocketbook($, 'work 2')).toBe('Started on: second')
-  await pocketbook($, 'todo -remove 1')
-  await pocketbook($, 'todo -remove 1')
+  expect(await pocketbook($, 'work t2')).toBe('Started on: second')
+  await pocketbook($, 'remove t1')
+  await pocketbook($, 'remove t1')
   expect(await pocketbook($, 'work')).toBe('The todo list is empty.')
 })
 
@@ -178,7 +178,7 @@ test('details shows the whole request of an item in the pane, with no model', as
   })
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
-  expect(await pocketbook($, 'details -todo 1')).toBeUndefined()
+  expect(await pocketbook($, 'details t1')).toBeUndefined()
   expect(opens.at(-1)?.id).toBe('pocketbook-list')
   const pane = await $.ui.mount({ plugin: 'pocketbook', component: 'Pane', requestId: 'pocketbook-list', surface: 'terminal', props: {} })
 
@@ -187,9 +187,9 @@ test('details shows the whole request of an item in the pane, with no model', as
   expect((await pane.find({ type: 'Text', text: /second line/ }))?.text).toBe('second line of it')
   await pane.unmount()
 
-  expect(await pocketbook($, 'details -todo 9')).toBe('Give the number of an item, 1 to 1.')
-  expect(await pocketbook($, 'details -backlog 1')).toBe('The backlog list is empty.')
-  expect(await pocketbook($, 'details nope')).toMatch(/Say which list/)
+  expect(await pocketbook($, 'details t9')).toBe('Give the number of an item, 1 to 1.')
+  expect(await pocketbook($, 'details b1')).toBe('The backlog list is empty.')
+  expect(await pocketbook($, 'details nope')).toMatch(/Name the item/)
 })
 
 const IGNORE_CASES: Array<[string, string | undefined, string]> = [
@@ -215,7 +215,7 @@ for (const [when, before, after] of IGNORE_CASES) {
 
 const summariesOf = (text: string | undefined) => (text ?? '').split('\n').filter(line => line.startsWith('- ')).map(line => line.slice(2))
 
-test('the backlog has the todo list commands, and unstash and unstash -all bring items back', async ($, on) => {
+test('the backlog has the todo list commands, and pop and pop -all bring items back', async ($, on) => {
   const { files } = world(on)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const todo = () => summariesOf(files['.pocketbook/todo.md'])
@@ -226,26 +226,26 @@ test('the backlog has the todo list commands, and unstash and unstash -all bring
   expect(backlog()).toEqual(['first parked', 'second parked'])
   expect(todo()).toEqual([])
 
-  expect(await pocketbook($, 'unstash 1')).toBe('Moved to the todo list: first parked')
+  expect(await pocketbook($, 'pop b1')).toBe('Moved to the todo list: first parked')
   expect(todo()).toEqual(['first parked'])
   expect(backlog()).toEqual(['second parked'])
-  expect(await pocketbook($, 'stash 1')).toBe('Moved to the backlog: first parked')
-  expect(await pocketbook($, 'unstash -all')).toBe('Moved 2 to the todo list.')
+  expect(await pocketbook($, 'push t1')).toBe('Moved to the backlog: first parked')
+  expect(await pocketbook($, 'pop -all')).toBe('Moved 2 to the todo list.')
   expect(todo()).toEqual(['second parked', 'first parked'])
   expect(backlog()).toEqual([])
 
-  expect(await pocketbook($, 'unstash -all')).toBe('The backlog list is empty.')
-  expect(await pocketbook($, 'unstash 1')).toBe('The backlog list is empty.')
-  expect(await pocketbook($, 'backlog -remove 1')).toBe('The backlog list is empty.')
+  expect(await pocketbook($, 'pop -all')).toBe('The backlog list is empty.')
+  expect(await pocketbook($, 'pop b1')).toBe('The backlog list is empty.')
+  expect(await pocketbook($, 'remove b1')).toBe('The backlog list is empty.')
   await pocketbook($, 'backlog -add to delete')
-  expect(await pocketbook($, 'backlog -remove 2')).toBe('Give the number of an item, 1 to 1.')
-  expect(await pocketbook($, 'backlog -remove 1')).toBe('Removed: to delete')
+  expect(await pocketbook($, 'remove b2')).toBe('Give the number of an item, 1 to 1.')
+  expect(await pocketbook($, 'remove b1')).toBe('Removed: to delete')
   expect(backlog()).toEqual([])
 
-  expect(await pocketbook($, 'backlog -remove -all')).toBe('The backlog list is empty.')
+  expect(await pocketbook($, 'remove b -all')).toBe('The backlog list is empty.')
   await pocketbook($, 'backlog -add one')
   await pocketbook($, 'backlog -add two')
-  expect(await pocketbook($, 'backlog -remove -all')).toBe('Removed all 2 from the backlog.')
+  expect(await pocketbook($, 'remove b -all')).toBe('Removed all 2 from the backlog.')
   expect(backlog()).toEqual([])
 })
 
@@ -277,7 +277,7 @@ test('edit puts an item in the prompt box to change, and rewrites it when given 
   })
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
-  expect(await pocketbook($, 'edit 1')).toBe('Say which item: edit t<n> for the todo list or edit b<n> for the backlog, then the new text.')
+  expect(await pocketbook($, 'edit 1')).toBe('Name the item by its list and number: t<n> for the todo list, b<n> for the backlog.')
   expect(await pocketbook($, 'edit t9')).toBe('Give the number of an item, 1 to 2.')
   expect(await pocketbook($, 'edit b1')).toBeUndefined()
   expect(filled.at(-1)).toBe('/pocketbook edit b1 parked')
@@ -289,4 +289,20 @@ test('edit puts an item in the prompt box to change, and rewrites it when given 
   expect(files['.pocketbook/todo.md']).toContain('- first')
   expect(await pocketbook($, 'edit B1 parked again')).toBe('Edited.')
   expect(files['.pocketbook/backlog.md']).toContain('- parked again')
+})
+
+test('push and pop take the right list, and remove names its list by the letter', async ($, on) => {
+  world(on)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await pocketbook($, 'todo -add a todo item')
+  await pocketbook($, 'backlog -add a parked item')
+
+  expect(await pocketbook($, 'push b1')).toBe('push moves a todo item to the backlog: push t<n>, or push -all.')
+  expect(await pocketbook($, 'pop t1')).toBe('pop brings a backlog item back to the todo list: pop b<n>, or pop -all.')
+  expect(await pocketbook($, 'remove 1')).toBe('Name the item by its list and number: t<n> for the todo list, b<n> for the backlog.')
+  expect(await pocketbook($, 'remove x1')).toBe('Name the item by its list and number: t<n> for the todo list, b<n> for the backlog.')
+  expect(await pocketbook($, 'work b1')).toBe('work takes a todo item: work t<n>.')
+  expect(await pocketbook($, 'remove t -all')).toBe('Removed all 1 from the todo list.')
+  expect(await pocketbook($, 'remove t -all')).toBe('The todo list is empty.')
+  expect(await pocketbook($, 'remove b1')).toBe('Removed: a parked item')
 })
