@@ -6,7 +6,7 @@ const TURN = { answer: '', durationMs: 1, isAborted: false, turnId: 't', reason:
 
 // A started session past the hard limit, the engine stood in for; `seen` records what the mod did to it.
 const session = async ($: any, on: any, mode: string) => {
-  const seen = { compactions: 0, prompts: [] as string[], logs: [] as string[], status: undefined as string | undefined, config: undefined as unknown }
+  const seen = { compactions: 0, prompts: [] as string[], logs: [] as string[], toasts: [] as string[], status: undefined as string | undefined, config: undefined as unknown }
   const files: Record<string, string> = {}
   const clock = mock.clock(on)
   let tokens: number | undefined = 310_000
@@ -27,6 +27,11 @@ const session = async ($: any, on: any, mode: string) => {
     return { value: e.value }
   })
   on('agent.list', () => ({ value: [] }))
+  on('ui.toast', (_: unknown, e: { text: string }) => {
+    seen.toasts.push(e.text)
+
+    return { value: undefined }
+  })
   on('ui.status', (_: unknown, e: { text?: string }) => {
     seen.status = e.text
 
@@ -94,8 +99,9 @@ test('with a shell in the background the conversation is held, prompts are kept 
   expect(seen.logs.at(-1)).toBe('Compact limit reached: not responding until the background shell or agent ends and the chat is compacted.')
 
   expect((await $.prompt.submit({ text: 'add a login page' })).drop).toBe(
-    'Compact limit reached: not responding until the background shell or agent ends and the chat is compacted. Todo: add a login page [1]',
+    'Compact limit reached: not responding until the background shell or agent ends and the chat is compacted.',
   )
+  expect(seen.toasts.at(-1)).toContain('add a login page')
   expect((await $.prompt.submit({ text: 'stop' })).drop).toBeUndefined()
   expect((await $.session.compact({ trigger: 'auto', messages: MESSAGES })).skip).toBe('Pocketbook is waiting for background work to end before compacting.')
   expect(seen.compactions).toBe(0)
@@ -106,7 +112,8 @@ test('with a shell in the background the conversation is held, prompts are kept 
 
   expect(seen.compactions).toBe(1)
   expect(seen.status).toBeUndefined()
-  expect(seen.logs.slice(-2)).toEqual(['Todo:', 'add a login page [1]']) // a row a line
+  expect(seen.toasts.at(-1)).toContain('add a login page') // the list is a toast, never a log row
+  expect(seen.logs.join('\n')).not.toContain('login page')
   expect(seen.prompts.at(-1)).toContain('Work through the todo list in .pocketbook/todo.md one item at a time')
 })
 

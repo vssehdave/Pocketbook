@@ -88,9 +88,6 @@ export const toastText = (title: string, items: readonly Item[], width = TOAST_W
 // What the person is shown: each summary, then its number for `todo -remove` and `stash`.
 export const listing = (items: readonly Item[]) => items.map((item, at) => `${item.summary} [${at + 1}]`).join('\n')
 
-// What the person is shown after a change: the todo list as it now stands.
-export const shown = (items: readonly Item[]) => (items.length === 0 ? 'The todo list is empty.' : `The todo list:\n${listing(items)}`)
-
 // The item a number typed by the person names, or nothing when there is none there.
 export const pick = (items: readonly Item[], typed: string) => {
   const at = /^\d+$/.test(typed) ? Number(typed) - 1 : -1
