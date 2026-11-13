@@ -46,8 +46,15 @@ export const summaryOf = (text: string) => {
   return line.length > SUMMARY ? `${line.slice(0, SUMMARY).trimEnd()}...` : line
 }
 
-// Each summary and its number, for a prompt to the model.
-export const listing = (items: readonly Item[]) => items.map((item, at) => `${item.summary} [${at + 1}]`).join('\n')
+// Each summary and its reference (t1, t2 for the todo list), for a prompt to the model.
+export const listing = (items: readonly Item[], letter = 't') => items.map((item, at) => `${item.summary} [${letter}${at + 1}]`).join('\n')
+
+// The item a reference names: t3 the third todo item, b2 the second backlog item. Nothing when it is not one.
+export const refOf = (typed: string) => {
+  const ref = /^([tb])(\d+)$/i.exec(typed.trim())
+
+  return ref === null ? undefined : { list: ref[1]!.toLowerCase() === 't' ? ('TODO' as const) : ('BACKLOG' as const), n: Number(ref[2]) }
+}
 
 // The item a number typed by the person names, or nothing when there is none there.
 export const pick = (items: readonly Item[], typed: string) => {

@@ -2,8 +2,8 @@
 // Pocketbook for agents without a plugin API of Claude Code's kind: the todo list and the backlog, and the hooks that keep them
 // working. No dependencies. The lists are the same markdown files the Claude Code plugin writes, in .pocketbook/ of the project.
 //
-//   node pocketbook.mjs todo | todo -add <text> | todo -remove <n> | stash <n> | stash -all | backlog | backlog -remove <n>
-//                        unstash <n> | unstash -all | edit t<n>|b<n> <text> | details -todo <n> | details -backlog <n>
+//   node pocketbook.mjs todo | todo -add <text> | backlog | details t<n>|b<n> | edit t<n>|b<n> <text> | remove t<n>|b<n>
+//                        remove t|b -all | push t<n> | push -all | pop b<n> | pop -all
 //   node pocketbook.mjs hook <prompt|stop> <codex|gemini|copilot>     (reads the agent's hook JSON on stdin)
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -36,7 +36,7 @@ export const summaryOf = text => {
   return line.length > 100 ? `${line.slice(0, 99)}…` : line
 }
 
-export const listing = items => items.map((item, at) => `${item.summary} [${at + 1}]`).join('\n')
+export const listing = (items, letter = 't') => items.map((item, at) => `${item.summary} [${letter}${at + 1}]`).join('\n')
 
 // What the person is shown after a change: the todo list as it now stands.
 const shown = items => (items.length === 0 ? 'The todo list is empty.' : `The todo list:\n${listing(items)}`)
@@ -80,103 +80,125 @@ const mark = (cwd, key) => write(cwd, 'state.json', JSON.stringify({ ...state(cw
 export const USAGE = `Pocketbook commands:
   todo                show the todo list
   todo -add <text>    add to it
-  todo -remove <n>    remove item n
-  stash <n>           move item n to the backlog
-  stash -all          move the whole todo list to the backlog
   backlog             show the backlog
-  backlog -remove <n> remove backlog item n
-  backlog -remove -all  remove every item from the backlog
-  unstash <n>         move backlog item n back to the todo list
-  unstash -all        move the whole backlog back to the todo list
-  edit t<n>|b<n> <text>  rewrite a todo or backlog item
-  details -todo <n>   show the whole request of todo item n (-backlog <n> for the backlog)`
+  details t<n>|b<n>   show the whole request of an item
+  edit t<n>|b<n> <text>  rewrite an item
+  remove t<n>|b<n>    remove an item
+  remove t|b -all     remove every item from the todo list (t) or the backlog (b)
+  push t<n>           put a todo item on the backlog
+  push -all           put the whole todo list on the backlog
+  pop b<n>            bring a backlog item back to the todo list
+  pop -all            bring the whole backlog back
+  Items are named by their list and place: t3 is the third todo item, b2 the second backlog item.`
+
+const NAMED = 'Name the item by its list and number: t<n> for the todo list, b<n> for the backlog.'
 
 // What the command answers for the words typed after it.
 export function run(cwd, args) {
   const [word = '', ...words] = args.trim().split(/\s+/)
   const rest = args.trim().slice(word.length).trim()
   const items = list(cwd, 'todo.md')
-
   const stored = list(cwd, 'backlog.md')
 
-  if (word === 'edit') {
-    const typed = /^([tb])(\d+)\s*([\s\S]*)$/i.exec(rest)
-    const from = typed === null ? undefined : typed[1].toLowerCase() === 't' ? items : stored
-    const at = typed === null ? undefined : pick(from, typed[2])
+  // The item the first word names, t3 or b2: its list, its place, or what to say when it is none.
+  const find = () => {
+    const ref = /^([tb])(\d+)$/i.exec(words[0] ?? '')
+
+    if (ref === null) {
+      return { said: NAMED }
+    }
+
+    const isTodo = ref[1].toLowerCase() === 't'
+    const kept = isTodo ? items : stored
+    const at = pick(kept, ref[2])
 
     if (at === undefined) {
-      return 'Say which item: edit t<n> for the todo list or edit b<n> for the backlog, then the new text.'
+      return { said: kept.length === 0 ? `The ${isTodo ? 'todo list' : 'backlog'} is empty.` : `Give the number of an item, 1 to ${kept.length}.` }
     }
 
-    const text = typed[3].trim()
-    const letter = typed[1].toLowerCase()
+    return { isTodo, kept, at, file: isTodo ? 'todo.md' : 'backlog.md' }
+  }
+
+  if (word === 'details' || word === 'edit' || word === 'remove') {
+    const whole = /^([tb])$/i.exec(words[0] ?? '')
+
+    if (word === 'remove' && whole !== null && words[1] === '-all') {
+      const isTodo = whole[1].toLowerCase() === 't'
+      const kept = isTodo ? items : stored
+
+      if (kept.length === 0) {
+        return `The ${isTodo ? 'todo list' : 'backlog'} is empty.`
+      }
+
+      save(cwd, isTodo ? 'todo.md' : 'backlog.md', [])
+
+      return `Removed all ${kept.length} from the ${isTodo ? 'todo list' : 'backlog'}.`
+    }
+
+    const found = find()
+
+    if (found.said !== undefined) {
+      return found.said
+    }
+
+    const { isTodo, kept, at, file } = found
+    const tag = words[0].toLowerCase()
+
+    if (word === 'details') {
+      return `${isTodo ? 'TODO' : 'BACKLOG'} #${at + 1}\n${kept[at].full}`
+    }
+
+    if (word === 'remove') {
+      save(cwd, file, kept.filter((_, i) => i !== at))
+
+      return `Removed: ${kept[at].summary}${isTodo ? `\n${shown(list(cwd, 'todo.md'))}` : ''}`
+    }
+
+    const text = rest.slice(words[0].length).trim()
 
     if (text === '') {
-      return `${letter === 't' ? 'TODO' : 'BACKLOG'} #${at + 1}
-${from[at].full}
-Type: edit ${letter}${at + 1} <new text>`
+      return `${isTodo ? 'TODO' : 'BACKLOG'} #${at + 1}\n${kept[at].full}\nType: edit ${tag} <new text>`
     }
 
-    save(cwd, letter === 't' ? 'todo.md' : 'backlog.md', from.map((item, i) => (i === at ? { summary: summaryOf(text), full: text } : item)))
+    save(cwd, file, kept.map((item, i) => (i === at ? { summary: summaryOf(text), full: text } : item)))
 
     return 'Edited.'
   }
 
+  // push puts a todo item on the backlog shelf, pop takes one back off it; with -all they move the whole list.
+  if (word === 'push' || word === 'pop') {
+    const isPush = word === 'push'
+    const [from, to, fromFile, toFile] = isPush ? [items, stored, 'todo.md', 'backlog.md'] : [stored, items, 'backlog.md', 'todo.md']
+
+    if (rest === '-all') {
+      if (from.length === 0) {
+        return `The ${isPush ? 'todo list' : 'backlog'} is empty.`
+      }
+
+      save(cwd, toFile, [...to, ...from])
+      save(cwd, fromFile, [])
+
+      return `Moved ${from.length} to the ${isPush ? 'backlog' : 'todo list'}.\n${shown(list(cwd, 'todo.md'))}`
+    }
+
+    const found = find()
+
+    if (found.said !== undefined) {
+      return found.said
+    }
+
+    if (found.isTodo !== isPush) {
+      return isPush ? 'push moves a todo item to the backlog: push t<n>, or push -all.' : 'pop brings a backlog item back to the todo list: pop b<n>, or pop -all.'
+    }
+
+    save(cwd, toFile, [...to, found.kept[found.at]])
+    save(cwd, fromFile, found.kept.filter((_, i) => i !== found.at))
+
+    return `Moved to the ${isPush ? 'backlog' : 'todo list'}: ${found.kept[found.at].summary}\n${shown(list(cwd, 'todo.md'))}`
+  }
+
   if (word === 'backlog' && rest === '') {
-    return listing(stored) || 'The backlog is empty.'
-  }
-
-  if (word === 'backlog' && words[0] === '-remove' && words[1] === '-all') {
-    if (stored.length === 0) {
-      return 'The backlog is empty.'
-    }
-
-    save(cwd, 'backlog.md', [])
-
-    return `Removed all ${stored.length} from the backlog.`
-  }
-
-  if (word === 'backlog' && words[0] === '-remove') {
-    const at = pick(stored, words[1] ?? '')
-
-    if (at === undefined) {
-      return stored.length === 0 ? 'The backlog is empty.' : `Give the number of an item, 1 to ${stored.length}.`
-    }
-
-    save(cwd, 'backlog.md', stored.filter((_, i) => i !== at))
-
-    return `Removed: ${stored[at].summary}`
-  }
-
-  if (word === 'unstash' && rest !== '-all') {
-    const at = pick(stored, rest)
-
-    if (at === undefined) {
-      return stored.length === 0 ? 'The backlog is empty.' : `Give the number of an item, 1 to ${stored.length}.`
-    }
-
-    save(cwd, 'todo.md', [...items, stored[at]])
-    save(cwd, 'backlog.md', stored.filter((_, i) => i !== at))
-
-    return `Moved to the todo list: ${stored[at].summary}\n${shown(list(cwd, 'todo.md'))}`
-  }
-
-  if (word === 'unstash' && rest === '-all') {
-    if (stored.length === 0) {
-      return 'The backlog is empty.'
-    }
-
-    save(cwd, 'todo.md', [...items, ...stored])
-    save(cwd, 'backlog.md', [])
-
-    return `Moved ${stored.length} to the todo list.\n${shown(list(cwd, 'todo.md'))}`
-  }
-
-  if (word === 'details') {
-    const from = words[0] === '-backlog' ? stored : words[0] === '-todo' ? items : undefined
-    const at = from === undefined ? undefined : pick(from, words[1] ?? '')
-
-    return at === undefined ? 'Use: details -todo <n> or details -backlog <n>.' : `${words[0] === '-todo' ? 'TODO' : 'BACKLOG'} #${at + 1}\n${from[at].full}`
+    return listing(stored, 'b') || 'The backlog is empty.'
   }
 
   if (word === 'todo' && rest === '') {
@@ -196,42 +218,12 @@ Type: edit ${letter}${at + 1} <new text>`
     return `Added. ${shown(list(cwd, 'todo.md'))}`
   }
 
-  const isRemove = word === 'todo' && words[0] === '-remove'
-
-  if (isRemove || (word === 'stash' && rest !== '-all')) {
-    const at = pick(items, isRemove ? (words[1] ?? '') : rest)
-
-    if (at === undefined) {
-      return items.length === 0 ? 'The todo list is empty.' : `Give the number of an item, 1 to ${items.length}.`
-    }
-
-    if (!isRemove) {
-      save(cwd, 'backlog.md', [...list(cwd, 'backlog.md'), items[at]])
-    }
-
-    const left = items.filter((_, i) => i !== at)
-    save(cwd, 'todo.md', left)
-
-    return `${isRemove ? 'Removed' : 'Moved to the backlog'}: ${items[at].summary}\n${shown(left)}`
-  }
-
-  if (word === 'stash' && rest === '-all') {
-    if (items.length === 0) {
-      return 'The todo list is empty.'
-    }
-
-    save(cwd, 'backlog.md', [...list(cwd, 'backlog.md'), ...items])
-    save(cwd, 'todo.md', [])
-
-    return `Moved ${items.length} to the backlog.\n${shown([])}`
-  }
-
   return USAGE
 }
 
 // "pb todo -add fix the footer" is a Pocketbook command typed as a prompt. The word after pb has to be a command, so a prompt that
 // merely starts with "pb" goes through untouched.
-const TYPED = /^\s*pb\s+((?:todo|stash|backlog|unstash|details|edit)\b[\s\S]*)$/i
+const TYPED = /^\s*pb\s+((?:todo|backlog|push|pop|details|edit|remove)\b[\s\S]*)$/i
 
 // Each agent words "block this" and "add this context" its own way.
 const block = (agent, text) => ({ decision: agent === 'gemini' ? 'deny' : 'block', reason: text, systemMessage: text })
@@ -242,7 +234,7 @@ const context = (agent, text) =>
       ? { hookSpecificOutput: { hookEventName: 'BeforeAgent', additionalContext: text } }
       : undefined // Copilot's command hooks cannot add to a prompt
 
-const FOLLOW = file => `Work through the todo list one item at a time, and when an item is done run: node "${file}" todo -remove <n>`
+const FOLLOW = file => `Work through the todo list one item at a time, and when an item is done run: node "${file}" remove t<n>`
 
 // A hook's answer for what the agent sent on stdin; undefined says nothing.
 export function hook(cwd, kind, agent, input, file) {

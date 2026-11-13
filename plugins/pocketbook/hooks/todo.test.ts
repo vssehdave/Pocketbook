@@ -26,7 +26,7 @@ test('the fallback summary is the first line that says something, cut to 60 char
 })
 
 test('items are listed with their numbers, and a number names an item', () => {
-  expect(listing(ITEMS)).toBe('Rewrite the importer [1]\nFix the typo [2]')
+  expect(listing(ITEMS)).toBe('Rewrite the importer [t1]\nFix the typo [t2]')
   expect(pick(ITEMS, '2')).toBe(1)
   expect([pick(ITEMS, '0'), pick(ITEMS, '3'), pick(ITEMS, 'two')]).toEqual([undefined, undefined, undefined])
 })

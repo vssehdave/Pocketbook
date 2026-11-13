@@ -92,7 +92,7 @@ test('a todo added during a reply is handed to the model when the reply ends', a
   await seen.clock.advance(250) // the hand-over is not awaited by the hook
 
   expect(seen.prompts).toHaveLength(1)
-  expect(seen.prompts[0]!.text).toContain('second task [1]')
+  expect(seen.prompts[0]!.text).toContain('second task [t1]')
 })
 
 test('a todo added when no reply is running starts nothing', async ($, on) => {
