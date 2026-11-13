@@ -1,5 +1,5 @@
 {
-  "description": "Pocketbook: answers pb todo commands without the model, and hands todo items added mid-reply to the agent when the reply ends.",
+  "description": "Pocketbook: answers pb bookmark commands without the model, and hands bookmark items added mid-reply to the agent when the reply ends.",
   "hooks": {
     "UserPromptSubmit": [
       {

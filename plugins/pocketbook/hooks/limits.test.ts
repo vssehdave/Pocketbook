@@ -28,7 +28,7 @@ const session = async ($: any, on: any, tokens: number, mode: string) => {
 test('past the soft limit the status line says so and the model is given the rule', async ($, on) => {
   const seen = await session($, on, 250_000, 'auto')
 
-  expect(seen.status).toBe('Soft limit reached: 250K of 300K used, 50K left. Small and medium tasks only; larger ones go to the todo list.')
+  expect(seen.status).toBe('Soft limit reached: 250K of 300K used, 50K left. Small and medium tasks only; larger ones go to the bookmark list.')
   await $.prompt.submit({ text: 'rewrite everything' })
   expect(seen.context?.[0]).toContain('about 50K are left')
 })

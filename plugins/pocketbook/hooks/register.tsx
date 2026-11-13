@@ -5,8 +5,8 @@ import type { Conf, Meter, Mode, Units } from '../types'
 import { K, MODES, band, ceilingOf, defaults, isMode, leftOf, limitsOf, modeColor, modeLine, modeReport, rule, softNote, usedText } from './lib'
 import type { History } from './lib'
 import { COMPACTED, PATTERN, confFor, hardLimit, sizesOf, suggested, table, tokensIn } from './analysis'
-import { BACKLOG, TODO, handOver, listing, nextItem, refOf, oneLine, parse, pick, scrub, serialize, summaryOf } from './todo'
-import type { Item } from './todo'
+import { SHELF, BOOKMARK, LEGACY, handOver, listing, nextItem, refOf, oneLine, parse, pick, scrub, serialize, summaryOf } from './bookmark'
+import type { Item } from './bookmark'
 
 const meter = atom({ plugin: 'pocketbook', key: 'meter' } as const, null as Meter)
 const conf = atom({ plugin: 'pocketbook', key: 'conf' } as const, null as Conf | null)
@@ -15,17 +15,17 @@ const units = atom({ plugin: 'pocketbook', key: 'units' } as const, 'tokens' as 
 // Whether the footer shows the four modes to pick from, in place of the meter.
 const isModesOpen = atom({ plugin: 'pocketbook', key: 'isModesOpen' } as const, false)
 
-// True while the main conversation is answering. A todo added then is pointed out to the model once that reply is over.
+// True while the main conversation is answering. A bookmark added then is pointed out to the model once that reply is over.
 const isTurn = atom({ plugin: 'pocketbook', key: 'isTurn' } as const, false)
 const added = atom({ plugin: 'pocketbook', key: 'added' } as const, false)
-// A run works the todo list first in, first out, one item per reply. It remembers how long the list was and what its first item was
+// A run works the bookmark list first in, first out, one item per reply. It remembers how long the list was and what its first item was
 // when that item was handed over, so a reply that left the list as it was can be told from one that got somewhere.
 const going = atom({ plugin: 'pocketbook', key: 'going' } as const, null as { len: number; first: string } | null)
 // The most used of the account's rate-limit windows, 0 to 100, and the windows already warned about (kind and reset time).
 const usage = atom({ plugin: 'pocketbook', key: 'usage' } as const, 0)
 const warned = atom({ plugin: 'pocketbook', key: 'warned' } as const, [] as readonly string[])
 
-// The usage at which the todo list is shown, so it can still be added to once the account runs out; and the usage that is out.
+// The usage at which the bookmark list is shown, so it can still be added to once the account runs out; and the usage that is out.
 const NEAR = 95
 const OUT = 99
 
@@ -83,29 +83,29 @@ const PANE = 'pocketbook-list'
 // A counter bumped when either list changes so an open pane redraws, and the first item each half of the pane shows, for a list longer
 // than its half has room for.
 const rev = atom({ plugin: 'pocketbook', key: 'rev' } as const, 0)
-const topTodo = atom({ plugin: 'pocketbook', key: 'topTodo' } as const, 0)
-const topBacklog = atom({ plugin: 'pocketbook', key: 'topBacklog' } as const, 0)
-// What the pane shows: both lists, one split top and bottom (the footer's show button), or one list alone (the todo and backlog commands).
-const paneView = atom({ plugin: 'pocketbook', key: 'paneView' } as const, 'BOTH' as 'BOTH' | 'TODO' | 'BACKLOG')
+const topBookmark = atom({ plugin: 'pocketbook', key: 'topBookmark' } as const, 0)
+const topShelf = atom({ plugin: 'pocketbook', key: 'topShelf' } as const, 0)
+// What the pane shows: both lists, one split top and bottom (the footer's show button), or one list alone (the bookmark and shelf commands).
+const paneView = atom({ plugin: 'pocketbook', key: 'paneView' } as const, 'BOTH' as 'BOTH' | 'BOOKMARK' | 'SHELF')
 // The item whose full request the pane shows in place of the lists, and the first line of it showing; null for the lists.
-const detail = atom({ plugin: 'pocketbook', key: 'detail' } as const, null as { list: 'TODO' | 'BACKLOG'; n: number } | null)
+const detail = atom({ plugin: 'pocketbook', key: 'detail' } as const, null as { list: 'BOOKMARK' | 'SHELF'; n: number } | null)
 const topDetail = atom({ plugin: 'pocketbook', key: 'topDetail' } as const, 0)
 
-// Opens the pane: the todo list on the top half, the backlog on the bottom. Only ever for the person's own press or command: the
+// Opens the pane: the bookmark list on the top half, the shelf on the bottom. Only ever for the person's own press or command: the
 // engine draws such an open at any width, and only if it comes before any await. A toast cannot hold a list: it shows three lines.
-async function showList($: any, view: 'BOTH' | 'TODO' | 'BACKLOG' = 'BOTH') {
-  const opening = $.ui.open({ id: PANE, title: 'Todo', closeOnEscape: true })
+async function showList($: any, view: 'BOTH' | 'BOOKMARK' | 'SHELF' = 'BOTH') {
+  const opening = $.ui.open({ id: PANE, title: 'Bookmark', closeOnEscape: true })
   await update($, paneView, () => view)
   await update($, detail, () => null)
-  await update($, topTodo, () => 0)
-  await update($, topBacklog, () => 0)
+  await update($, topBookmark, () => 0)
+  await update($, topShelf, () => 0)
   await update($, rev, n => n + 1)
   await opening.catch(() => undefined)
 }
 
 // Opens the pane on one item's full request, which is kept whole in the list file: nothing here calls a model.
-async function showDetail($: any, list: 'TODO' | 'BACKLOG', n: number) {
-  const opening = $.ui.open({ id: PANE, title: 'Todo', closeOnEscape: true })
+async function showDetail($: any, list: 'BOOKMARK' | 'SHELF', n: number) {
+  const opening = $.ui.open({ id: PANE, title: 'Bookmark', closeOnEscape: true })
   await update($, detail, () => ({ list, n }))
   await update($, topDetail, () => 0)
   await update($, rev, k => k + 1)
@@ -145,9 +145,9 @@ function wrapText(text: string, width: number): string[] {
   return lines
 }
 
-// Hands over the first item of the todo list, read from the file now so items removed since are skipped and the numbers are current.
+// Hands over the first item of the bookmark list, read from the file now so items removed since are skipped and the numbers are current.
 async function startRun($: any) {
-  const items = await readList($, TODO)
+  const items = await readList($, BOOKMARK)
 
   if (items.length === 0) {
     await update($, going, () => null)
@@ -163,7 +163,7 @@ async function startRun($: any) {
 // is never handed over twice in a row. A reply the person caused by typing counts too; /pocketbook work picks the run up again.
 async function continueRun($: any) {
   const before = await read($, going)
-  const items = await readList($, TODO)
+  const items = await readList($, BOOKMARK)
 
   if (before === null) {
     return
@@ -175,20 +175,20 @@ async function continueRun($: any) {
     await update($, going, () => null) // off starts nothing on its own, a run included
   } else if (items.length === 0) {
     await update($, going, () => null)
-    say($, 'The todo list is done.')
+    say($, 'The bookmark list is done.')
   } else if ((await read($, usage)) >= OUT) {
     await update($, going, () => null)
-    say($, 'Usage is used up, so the todo list waits. Run /pocketbook work once it resets.')
+    say($, 'Usage is used up, so the bookmark list waits. Run /pocketbook work once it resets.')
   } else if (items[0]!.full === before.first && items.length >= before.len) {
     await update($, going, () => null)
-    say($, 'Stopped: the first item is still on the todo list. Run /pocketbook work to go on.')
+    say($, 'Stopped: the first item is still on the bookmark list. Run /pocketbook work to go on.')
   } else {
     await startRun($)
   }
 }
 
 // After a compaction or a clear of the main conversation: nothing is held any more. Only a compaction Pocketbook made itself starts a
-// run on the todo list; after a clear or a compaction the person or Claude Code made, the person is told what is waiting and left to
+// run on the bookmark list; after a clear or a compaction the person or Claude Code made, the person is told what is waiting and left to
 // decide. Off says nothing.
 async function afterCompact($: any, isOwn = false) {
   await update($, isHeld, () => false)
@@ -205,10 +205,10 @@ async function afterCompact($: any, isOwn = false) {
     return
   }
 
-  const waiting = (await readList($, TODO)).length
+  const waiting = (await readList($, BOOKMARK)).length
 
   if (waiting > 0) {
-    say($, `You have ${waiting} item${waiting === 1 ? '' : 's'} on the todo list. Run /pocketbook todo to see ${waiting === 1 ? 'it' : 'them'}, or /pocketbook work to have ${waiting === 1 ? 'it' : 'them'} worked through one at a time.`)
+    say($, `You have ${waiting} item${waiting === 1 ? '' : 's'} on the bookmark list. Run /pocketbook bookmark to see ${waiting === 1 ? 'it' : 'them'}, or /pocketbook work to have ${waiting === 1 ? 'it' : 'them'} worked through one at a time.`)
   }
 }
 
@@ -217,7 +217,7 @@ async function afterCompact($: any, isOwn = false) {
 // rejects the call while a turn runs, so a reply is never compacted under way.
 async function compactNow($: any) {
   const before = (await read($, meter))?.tokens ?? 0
-  const done = await $.session.compact({ instructions: `Open work is listed in ${TODO}; say that it is there.` }).catch(() => undefined)
+  const done = await $.session.compact({ instructions: `Open work is listed in ${BOOKMARK}; say that it is there.` }).catch(() => undefined)
 
   if (done === undefined || done.skip !== undefined) {
     return false
@@ -290,7 +290,9 @@ async function refresh($: any) {
 }
 
 async function readList($: any, path: string): Promise<Item[]> {
-  return (await $.fs.exists(path)) ? parse(await $.fs.read(path)) : []
+  const file = (await $.fs.exists(path)) ? path : LEGACY[path]
+
+  return file !== undefined && (await $.fs.exists(file)) ? parse(await $.fs.read(file)) : []
 }
 
 // The lists are the person's notes, not the project's, so .pocketbook/ is in .gitignore before either list is written; the file is
@@ -305,7 +307,7 @@ async function ensureIgnored($: any) {
 
 async function writeList($: any, path: string, items: readonly Item[]) {
   await ensureIgnored($)
-  await $.fs.write(path, serialize(path === TODO ? 'Pocketbook todo' : 'Pocketbook backlog', items))
+  await $.fs.write(path, serialize(path === BOOKMARK ? 'Pocketbook bookmark' : 'Pocketbook shelf', items))
 }
 
 // One line that says what a request asks, with what should not be repeated left out. With the account out of usage no model can write
@@ -330,39 +332,39 @@ async function summarize($: any, text: string) {
   return (answer?.isAnswered ? scrub(oneLine(answer.text)) : '') || summaryOf(text)
 }
 
-// A todo item added or moved in while a reply runs is pointed out to the model once that reply is over.
+// A bookmark item added or moved in while a reply runs is pointed out to the model once that reply is over.
 async function noteAdded($: any) {
   if (await read($, isTurn)) {
     await update($, added, () => true)
   }
 }
 
-async function addItem($: any, list: 'TODO' | 'BACKLOG', text: string) {
-  const path = list === 'TODO' ? TODO : BACKLOG
+async function addItem($: any, list: 'BOOKMARK' | 'SHELF', text: string) {
+  const path = list === 'BOOKMARK' ? BOOKMARK : SHELF
   await writeList($, path, [...(await readList($, path)), { summary: await summarize($, text), full: text }])
 
-  if (list === 'TODO') {
+  if (list === 'BOOKMARK') {
     await noteAdded($)
   }
 }
 
-// A reply has ended with todo items added during it. With usage left the model is handed the list now; with none it waits for the
+// A reply has ended with bookmark items added during it. With usage left the model is handed the list now; with none it waits for the
 // next prompt, which carries the same word (see prompt.submit).
 async function handBack($: any) {
   if ((await read($, mode)) === 'off') {
     return
   }
 
-  const items = await readList($, TODO)
+  const items = await readList($, BOOKMARK)
 
   if ((await read($, usage)) >= OUT) {
-    say($, 'Usage is used up. What you add stays on the todo list and is picked up with your next prompt after it resets.')
+    say($, 'Usage is used up. What you add stays on the bookmark list and is picked up with your next prompt after it resets.')
   
     return
   }
 
   await update($, added, () => false)
-  void $.prompt.submit({ text: handOver('Todo items were added while you worked.', items) }).catch(() => undefined)
+  void $.prompt.submit({ text: handOver('Bookmark items were added while you worked.', items) }).catch(() => undefined)
 }
 
 // The context size of every request in the transcripts of the last `days` days, per conversation. Claude Code keeps them under its
@@ -470,8 +472,8 @@ async function setup($: any, typed: string): Promise<string> {
   const picked = confFor(sessions, soft, before.ceiling)
   await $.store.set('conf', picked)
   await update($, conf, () => picked)
-  await writeList($, TODO, await readList($, TODO))
-  await writeList($, BACKLOG, await readList($, BACKLOG))
+  await writeList($, BOOKMARK, await readList($, BOOKMARK))
+  await writeList($, SHELF, await readList($, SHELF))
   const { passed } = hardLimit(sessions, soft, before.ceiling)
 
   return [
@@ -482,7 +484,7 @@ async function setup($: any, typed: string): Promise<string> {
       ? `No conversation passed ${K(picked.soft)}, so the hard limit is 50K over it.`
       : `${passed} conversations passed ${K(picked.soft)}; 80% of them peaked at or under ${K(picked.hard)}.`,
     ...(['lite', 'auto', 'ultra'] as const).map(one => `  ${modeLine(one, picked)}`),
-    `The todo list is ${TODO}, the backlog ${BACKLOG}.`,
+    `The bookmark list is ${BOOKMARK}, the shelf ${SHELF}.`,
   ].join('\n')
 }
 
@@ -490,30 +492,30 @@ const USAGE = `Pocketbook commands:
   setup               pick the limits from your own history
   setup -units [tokens|%]  switch the footer between tokens and percent
   mode::<name>        off, lite, auto or ultra
-  todo                show the todo list
-  todo -add <text>    add to it
-  backlog             show the backlog
-  backlog -add <text>   add to it
-  details t<n>|b<n>   show the whole request of an item
-  edit t<n>|b<n> [text]  change an item: with no text its request goes in the prompt box to edit
-  remove t<n>|b<n>    remove an item
-  remove t|b -all     remove every item from the todo list (t) or the backlog (b)
-  push t<n>           put a todo item on the backlog
-  push -all           put the whole todo list on the backlog
-  pop b<n>            bring a backlog item back to the todo list
-  pop -all            bring the whole backlog back
-  work [t<n>]         hand the todo list, or item n, to the model now
-  Items are named by their list and place: t3 is the third todo item, b2 the second backlog item.`
+  bookmark                show the bookmark list
+  bookmark -add <text>    add to it
+  shelf             show the shelf
+  shelf -add <text>   add to it
+  details b<n>|s<n>   show the whole request of an item
+  edit b<n>|s<n> [text]  change an item: with no text its request goes in the prompt box to edit
+  remove b<n>|s<n>    remove an item
+  remove b|s -all     remove every item from the bookmark list (b) or the shelf (s)
+  push b<n>           put a bookmark item on the shelf
+  push -all           put the whole bookmark list on the shelf
+  pop s<n>            bring a shelf item back to the bookmark list
+  pop -all            bring the whole shelf back
+  work [b<n>]         hand the bookmark list, or item n, to the model now
+  Items are named by their list and place: b3 is the third bookmark item, s2 the second shelf item.`
 
 // The item a reference names, with its list as it is now; or what to tell the person when it names none.
-async function itemOf($: any, typed: string): Promise<{ list: 'TODO' | 'BACKLOG'; kept: Item[]; at: number } | string> {
+async function itemOf($: any, typed: string): Promise<{ list: 'BOOKMARK' | 'SHELF'; kept: Item[]; at: number } | string> {
   const ref = refOf(typed)
 
   if (ref === undefined) {
-    return 'Name the item by its list and number: t<n> for the todo list, b<n> for the backlog.'
+    return 'Name the item by its list and number: b<n> for the bookmark list, s<n> for the shelf.'
   }
 
-  const kept = await readList($, ref.list === 'TODO' ? TODO : BACKLOG)
+  const kept = await readList($, ref.list === 'BOOKMARK' ? BOOKMARK : SHELF)
   const at = pick(kept, String(ref.n))
 
   if (at === undefined) {
@@ -553,7 +555,7 @@ async function run($: any, args: string): Promise<string> {
     return setup($, rest)
   }
 
-  // An item is named by its list and its place: t3 is the third todo item, b2 the second backlog item.
+  // An item is named by its list and its place: b3 is the third bookmark item, s2 the second shelf item.
   if (word === 'details') {
     const found = await itemOf($, restWords[0] ?? '')
 
@@ -566,7 +568,7 @@ async function run($: any, args: string): Promise<string> {
     return ''
   }
 
-  // edit t2 or edit b3: with no text the item's whole request is put in the prompt box as a draft to change and send back; with text
+  // edit b2 or edit s3: with no text the item's whole request is put in the prompt box as a draft to change and send back; with text
   // the item is rewritten.
   if (word === 'edit') {
     const found = await itemOf($, restWords[0] ?? '')
@@ -585,28 +587,28 @@ async function run($: any, args: string): Promise<string> {
     }
 
     const edited = { summary: await summarize($, text), full: text }
-    await writeList($, found.list === 'TODO' ? TODO : BACKLOG, found.kept.map((item, i) => (i === found.at ? edited : item)))
+    await writeList($, found.list === 'BOOKMARK' ? BOOKMARK : SHELF, found.kept.map((item, i) => (i === found.at ? edited : item)))
     await showList($, found.list)
 
     return 'Edited.'
   }
 
-  // remove t3, remove b2, or remove t -all to empty a list.
+  // remove b3, remove s2, or remove b -all to empty a list.
   if (word === 'remove') {
-    const whole = /^([tb])$/i.exec(restWords[0] ?? '')
+    const whole = /^([bs])$/i.exec(restWords[0] ?? '')
 
     if (whole !== null && restWords[1] === '-all') {
-      const list = whole[1]!.toLowerCase() === 't' ? 'TODO' : 'BACKLOG'
-      const kept = await readList($, list === 'TODO' ? TODO : BACKLOG)
+      const list = whole[1]!.toLowerCase() === 'b' ? 'BOOKMARK' : 'SHELF'
+      const kept = await readList($, list === 'BOOKMARK' ? BOOKMARK : SHELF)
 
       if (kept.length === 0) {
         return `The ${list.toLowerCase()} list is empty.`
       }
 
-      await writeList($, list === 'TODO' ? TODO : BACKLOG, [])
+      await writeList($, list === 'BOOKMARK' ? BOOKMARK : SHELF, [])
       await showList($, list)
 
-      return `Removed all ${kept.length} from the ${list === 'TODO' ? 'todo list' : 'backlog'}.`
+      return `Removed all ${kept.length} from the ${list === 'BOOKMARK' ? 'bookmark list' : 'shelf'}.`
     }
 
     const found = await itemOf($, restWords[0] ?? '')
@@ -615,14 +617,14 @@ async function run($: any, args: string): Promise<string> {
       return found
     }
 
-    await writeList($, found.list === 'TODO' ? TODO : BACKLOG, found.kept.filter((_, i) => i !== found.at))
+    await writeList($, found.list === 'BOOKMARK' ? BOOKMARK : SHELF, found.kept.filter((_, i) => i !== found.at))
     await showList($, found.list)
 
     return `Removed: ${found.kept[found.at]!.summary}`
   }
 
-  if (word === 'todo' || word === 'backlog') {
-    const list = word === 'todo' ? 'TODO' : 'BACKLOG'
+  if (word === 'bookmark' || word === 'shelf') {
+    const list = word === 'bookmark' ? 'BOOKMARK' : 'SHELF'
 
     if (rest === '') {
       await showList($, list)
@@ -646,13 +648,13 @@ async function run($: any, args: string): Promise<string> {
     return USAGE
   }
 
-  // Hands the todo list (or one item of it, work t2) to the model now. Past the soft limit the model is told to start nothing large, so
+  // Hands the bookmark list (or one item of it, work b2) to the model now. Past the soft limit the model is told to start nothing large, so
   // the conversation is compacted first, and the hand-over after the compaction carries the list.
   if (word === 'work') {
-    const items = await readList($, TODO)
+    const items = await readList($, BOOKMARK)
 
     if (items.length === 0) {
-      return 'The todo list is empty.'
+      return 'The bookmark list is empty.'
     }
 
     let one: Item | undefined
@@ -664,8 +666,8 @@ async function run($: any, args: string): Promise<string> {
         return found
       }
 
-      if (found.list !== 'TODO') {
-        return 'work takes a todo item: work t<n>.'
+      if (found.list !== 'BOOKMARK') {
+        return 'work takes a bookmark item: work b<n>.'
       }
 
       one = found.kept[found.at]
@@ -685,14 +687,14 @@ async function run($: any, args: string): Promise<string> {
       return `Started on ${items.length} item${items.length === 1 ? '' : 's'}.`
     }
 
-    void $.prompt.submit({ text: `Work on this todo item now: ${one.summary} Its full request is under it in ${TODO}: read it before starting, and delete the item from the file when it is done.` }).catch(() => undefined)
+    void $.prompt.submit({ text: `Work on this bookmark item now: ${one.summary} Its full request is under it in ${BOOKMARK}: read it before starting, and delete the item from the file when it is done.` }).catch(() => undefined)
 
     return `Started on: ${one.summary}`
   }
 
-  // push puts a todo item on the backlog shelf, pop takes one back off it; with -all they move the whole list.
+  // push puts a bookmark item on the shelf shelf, pop takes one back off it; with -all they move the whole list.
   if (word === 'push' || word === 'pop') {
-    const [mine, from, to] = word === 'push' ? (['TODO', TODO, BACKLOG] as const) : (['BACKLOG', BACKLOG, TODO] as const)
+    const [mine, from, to] = word === 'push' ? (['BOOKMARK', BOOKMARK, SHELF] as const) : (['SHELF', SHELF, BOOKMARK] as const)
 
     if (rest === '-all') {
       const source = await readList($, from)
@@ -704,13 +706,13 @@ async function run($: any, args: string): Promise<string> {
       await writeList($, to, [...(await readList($, to)), ...source])
       await writeList($, from, [])
 
-      if (to === TODO) {
+      if (to === BOOKMARK) {
         await noteAdded($)
       }
 
       await showList($)
 
-      return `Moved ${source.length} to the ${to === TODO ? 'todo list' : 'backlog'}.`
+      return `Moved ${source.length} to the ${to === BOOKMARK ? 'bookmark list' : 'shelf'}.`
     }
 
     const found = await itemOf($, restWords[0] ?? '')
@@ -720,19 +722,19 @@ async function run($: any, args: string): Promise<string> {
     }
 
     if (found.list !== mine) {
-      return word === 'push' ? 'push moves a todo item to the backlog: push t<n>, or push -all.' : 'pop brings a backlog item back to the todo list: pop b<n>, or pop -all.'
+      return word === 'push' ? 'push moves a bookmark item to the shelf: push b<n>, or push -all.' : 'pop brings a shelf item back to the bookmark list: pop s<n>, or pop -all.'
     }
 
     await writeList($, to, [...(await readList($, to)), found.kept[found.at]!]) // into the other list first, so a failure leaves a copy, not a loss
     await writeList($, from, found.kept.filter((_, i) => i !== found.at))
 
-    if (to === TODO) {
+    if (to === BOOKMARK) {
       await noteAdded($)
     }
 
     await showList($)
 
-    return `Moved to the ${to === TODO ? 'todo list' : 'backlog'}: ${found.kept[found.at]!.summary}`
+    return `Moved to the ${to === BOOKMARK ? 'bookmark list' : 'shelf'}: ${found.kept[found.at]!.summary}`
   }
 
   return USAGE
@@ -759,11 +761,11 @@ async function loadConf($: any) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
-    await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | mode::<name> | todo | todo -add <text> | backlog | backlog -add <text> | details t<n>|b<n> | edit t<n>|b<n> [text] | remove t<n>|b<n> | remove t|b -all | push t<n> | push -all | pop b<n> | pop -all | work [t<n>]]' })
+    await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the bookmark list', argumentHint: '[setup | mode::<name> | bookmark | bookmark -add <text> | shelf | shelf -add <text> | details b<n>|s<n> | edit b<n>|s<n> [text] | remove b<n>|s<n> | remove b|s -all | push b<n> | push -all | pop s<n> | pop -all | work [b<n>]]' })
     await loadConf($)
     await update($, isTurn, () => false)
     // Lists already there are put under .gitignore now, not only when next written; a filesystem that will not say is left be.
-    await (async () => ((await $.fs.exists(TODO)) || (await $.fs.exists(BACKLOG)) ? ensureIgnored($) : undefined))().catch(() => undefined)
+    await (async () => ((await $.fs.exists(BOOKMARK)) || (await $.fs.exists(SHELF)) ? ensureIgnored($) : undefined))().catch(() => undefined)
 
     // Pocketbook compacts by its own limits, so Claude Code's own automatic compaction is turned off; a refusal (a managed setting) is left be.
     await $.config.set({ key: 'autoCompact', value: false }).catch(() => undefined)
@@ -783,8 +785,8 @@ export const register: Register = on => {
     return result
   })
 
-  // Pushed when a rate-limit window moves a whole point. Near the end of one the todo list is shown once, so the person knows
-  // /pocketbook todo -add keeps working after it runs out, when the model answers nothing.
+  // Pushed when a rate-limit window moves a whole point. Near the end of one the bookmark list is shown once, so the person knows
+  // /pocketbook bookmark -add keeps working after it runs out, when the model answers nothing.
   on('session.measure', async ($, e, next) => {
     const result = await next(e)
     await update($, usage, () => Math.max(0, ...e.rateLimits.map(limit => limit.percentUsed)))
@@ -794,7 +796,7 @@ export const register: Register = on => {
     if (near.length > 0) {
       await update($, warned, ids => [...ids, ...near.map(limit => `${limit.kind}:${limit.resetsAt}`)])
       const worst = near.reduce((a, b) => (b.percentUsed > a.percentUsed ? b : a))
-      say($, `Usage is at ${Math.round(worst.percentUsed)}% of the ${worst.kind.replace('_', '-')} limit. /pocketbook todo -add keeps working when it runs out; what you add waits on the list.`)
+      say($, `Usage is at ${Math.round(worst.percentUsed)}% of the ${worst.kind.replace('_', '-')} limit. /pocketbook bookmark -add keeps working when it runs out; what you add waits on the list.`)
         }
 
     return result
@@ -818,7 +820,7 @@ export const register: Register = on => {
   })
 
   // Past the soft limit the model reads the rule beside every prompt, so it is always measured against the room left now.
-  // While held, what the person types is not answered: it is kept on the todo list and they are told why. A failure here lets the prompt through.
+  // While held, what the person types is not answered: it is kept on the bookmark list and they are told why. A failure here lets the prompt through.
   on('prompt.submit', async ($, e, next) => {
     const text = e.text.trim()
     const from = e.origin?.kind ?? 'composer' // a prompt with no origin is the person's own
@@ -835,7 +837,7 @@ export const register: Register = on => {
     ) {
       if (await isBusy($)) {
         if (e.command === undefined) {
-          await addItem($, 'TODO', e.text)
+          await addItem($, 'BOOKMARK', e.text)
         }
 
       
@@ -853,12 +855,12 @@ export const register: Register = on => {
     const extra: string[] = []
 
     if (past !== undefined) {
-      extra.push(rule(past.tokens, past.limit, TODO))
+      extra.push(rule(past.tokens, past.limit, BOOKMARK))
     }
 
     if (e.command === undefined && from === 'composer' && (await read($, added)) && (await read($, mode)) !== 'off') {
       await update($, added, () => false)
-      extra.push(`Pocketbook: todo items were added while you worked. After this request, work through the todo list in ${TODO} one item at a time and delete each as it is done.`)
+      extra.push(`Pocketbook: bookmark items were added while you worked. After this request, work through the bookmark list in ${BOOKMARK} one item at a time and delete each as it is done.`)
     }
 
     return next(extra.length === 0 ? e : { ...e, context: [...(e.context ?? []), ...extra] })
@@ -916,12 +918,12 @@ export const register: Register = on => {
     return result
   })
 
-  // The list pane. The footer's show button gives both lists, the todo list on the top half and the backlog on the bottom; the todo and
-  // backlog commands give one list alone. Each list has a title between rules that fill the width, then each summary from the left with
+  // The list pane. The footer's show button gives both lists, the bookmark list on the top half and the shelf on the bottom; the bookmark and
+  // shelf commands give one list alone. Each list has a title between rules that fill the width, then each summary from the left with
   // its number at the right edge, on the item's first line, a long summary wrapping under itself; the number opens the item. It follows
   // the pane's width, so it needs no padding. A pane drawn inline has about a third of the terminal's height and does not scroll, so
   // what is too long is paged with arrows at the right of its title. The engine draws the close mark. An item opened by its number or by
-  // `details` shows its whole request under "TODO #n" or "BACKLOG #n", with [back] at the left of the title.
+  // `details` shows its whole request under "BOOKMARK #n" or "SHELF #n", with [back] at the left of the title.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     await read($, rev)
@@ -947,7 +949,7 @@ export const register: Register = on => {
     const one = await read($, detail)
 
     if (one !== null) {
-      const items = await readList($, one.list === 'TODO' ? TODO : BACKLOG)
+      const items = await readList($, one.list === 'BOOKMARK' ? BOOKMARK : SHELF)
       const lines = items[one.n - 1] === undefined ? ['That item is no longer on the list.'] : wrapText(items[one.n - 1]!.full, wide + 5)
       const room = Math.max(3, bodyRows - 1)
       const start = Math.min(await read($, topDetail), Math.max(0, lines.length - 1))
@@ -983,13 +985,13 @@ export const register: Register = on => {
     const view = await read($, paneView)
     const cap = view === 'BOTH' ? Math.max(2, Math.floor((bodyRows - 2) / 2)) : Math.max(2, bodyRows - 1) // item lines a list has
 
-    const part = async (title: 'TODO' | 'BACKLOG') => {
-      const path = title === 'TODO' ? TODO : BACKLOG
+    const part = async (title: 'BOOKMARK' | 'SHELF') => {
+      const path = title === 'BOOKMARK' ? BOOKMARK : SHELF
       const items = await readList($, path)
       const lines = (i: number) => Math.max(1, Math.ceil(items[i]!.summary.length / wide))
-      const first = title === 'TODO' ? await read($, topTodo) : await read($, topBacklog)
+      const first = title === 'BOOKMARK' ? await read($, topBookmark) : await read($, topShelf)
       const start = Math.min(first, Math.max(0, items.length - 1))
-      const go = (n: number) => void (title === 'TODO' ? update($, topTodo, () => n) : update($, topBacklog, () => n))
+      const go = (n: number) => void (title === 'BOOKMARK' ? update($, topBookmark, () => n) : update($, topShelf, () => n))
       let end = start
       let used = 0
 
@@ -1022,7 +1024,7 @@ export const register: Register = on => {
                 <Text>{item.summary}</Text>
               </Box>
               <Button key={`open:${title}:${start + i + 1}`} plain onPress={() => void showDetail($, title, start + i + 1)}>
-                <Text dimColor>{`[${title === 'TODO' ? 't' : 'b'}${start + i + 1}]`}</Text>
+                <Text dimColor>{`[${title === 'BOOKMARK' ? 'b' : 's'}${start + i + 1}]`}</Text>
               </Button>
             </Box>
           ))}
@@ -1032,8 +1034,8 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
-        {view !== 'BACKLOG' && (await part('TODO'))}
-        {view !== 'TODO' && (await part('BACKLOG'))}
+        {view !== 'SHELF' && (await part('BOOKMARK'))}
+        {view !== 'BOOKMARK' && (await part('SHELF'))}
       </Box>
     )
   })

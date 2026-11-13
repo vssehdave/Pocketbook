@@ -31,10 +31,10 @@ test('each mode acts on its own limits', () => {
 })
 
 test('past the soft limit the note and the rule give the room left and a third of it', () => {
-  expect(softNote(250_000, 300_000)).toBe('Soft limit reached: 250K of 300K used, 50K left. Small and medium tasks only; larger ones go to the todo list.')
-  expect(rule(250_000, 300_000, 'todo.md')).toContain('about 50K are left')
-  expect(rule(250_000, 300_000, 'todo.md')).toContain('about 17K tokens')
-  expect(rule(310_000, 300_000, 'todo.md')).toContain('about 0K are left')
+  expect(softNote(250_000, 300_000)).toBe('Soft limit reached: 250K of 300K used, 50K left. Small and medium tasks only; larger ones go to the bookmark list.')
+  expect(rule(250_000, 300_000, 'bookmark.md')).toContain('about 50K are left')
+  expect(rule(250_000, 300_000, 'bookmark.md')).toContain('about 17K tokens')
+  expect(rule(310_000, 300_000, 'bookmark.md')).toContain('about 0K are left')
 })
 
 test('the size reads in tokens or as a percent, and a mode takes its shade of the band', () => {

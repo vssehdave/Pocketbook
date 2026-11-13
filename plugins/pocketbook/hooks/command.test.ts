@@ -34,43 +34,43 @@ const world = (on: any, files: Record<string, string> = {}, context: Record<stri
 
 const pocketbook = async ($: any, args: string) => (await $.command.run({ command: 'pocketbook', args })).text
 
-test('the todo and backlog commands change the lists and open the list pane', async ($, on) => {
+test('the bookmark and shelf commands change the lists and open the list pane', async ($, on) => {
   const { files, opens } = world(on, { '.gitignore': 'node_modules/' })
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const summaries = (path: string) => (files[path] ?? '').split('\n').filter(line => line.startsWith('- ')).map(line => line.slice(2))
-  const todo = () => summaries('.pocketbook/todo.md')
+  const bookmark = () => summaries('.pocketbook/bookmark.md')
 
-  expect(await pocketbook($, 'todo')).toBeUndefined()
-  expect(opens.at(-1)).toEqual({ id: 'pocketbook-list', title: 'Todo', closeOnEscape: true })
-  await pocketbook($, 'todo -add first task')
-  await pocketbook($, 'todo -add second task')
-  expect(await pocketbook($, 'todo -add third task')).toBe('Added.')
-  expect(todo()).toEqual(['first task', 'second task', 'third task'])
+  expect(await pocketbook($, 'bookmark')).toBeUndefined()
+  expect(opens.at(-1)).toEqual({ id: 'pocketbook-list', title: 'Bookmark', closeOnEscape: true })
+  await pocketbook($, 'bookmark -add first task')
+  await pocketbook($, 'bookmark -add second task')
+  expect(await pocketbook($, 'bookmark -add third task')).toBe('Added.')
+  expect(bookmark()).toEqual(['first task', 'second task', 'third task'])
   expect(files['.gitignore']).toBe('node_modules/\n.pocketbook/\n') // added once, not once per write
 
-  expect(await pocketbook($, 'push t2')).toBe('Moved to the backlog: second task')
-  expect(todo()).toEqual(['first task', 'third task'])
-  expect(summaries('.pocketbook/backlog.md')).toEqual(['second task'])
-  expect(await pocketbook($, 'remove t1')).toBe('Removed: first task')
-  expect(todo()).toEqual(['third task'])
-  expect(await pocketbook($, 'remove t5')).toBe('Give the number of an item, 1 to 1.')
-  expect(await pocketbook($, 'push -all')).toBe('Moved 1 to the backlog.')
-  expect(todo()).toEqual([])
-  expect(await pocketbook($, 'backlog')).toBeUndefined()
+  expect(await pocketbook($, 'push b2')).toBe('Moved to the shelf: second task')
+  expect(bookmark()).toEqual(['first task', 'third task'])
+  expect(summaries('.pocketbook/shelf.md')).toEqual(['second task'])
+  expect(await pocketbook($, 'remove b1')).toBe('Removed: first task')
+  expect(bookmark()).toEqual(['third task'])
+  expect(await pocketbook($, 'remove b5')).toBe('Give the number of an item, 1 to 1.')
+  expect(await pocketbook($, 'push -all')).toBe('Moved 1 to the shelf.')
+  expect(bookmark()).toEqual([])
+  expect(await pocketbook($, 'shelf')).toBeUndefined()
   expect(opens.at(-1)?.id).toBe('pocketbook-list')
-  expect(summaries('.pocketbook/backlog.md')).toEqual(['second task', 'third task'])
+  expect(summaries('.pocketbook/shelf.md')).toEqual(['second task', 'third task'])
 })
 
 test('work starts the whole list or one item, and refuses a bad number or an empty list', async ($, on) => {
-  world(on, { '.pocketbook/todo.md': '# Pocketbook todo\n\n- first\n  the full first request\n- second\n' })
+  world(on, { '.pocketbook/bookmark.md': '# Pocketbook bookmark\n\n- first\n  the full first request\n- second\n' })
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
-  expect(await pocketbook($, 'work t9')).toBe('Give the number of an item, 1 to 2.')
+  expect(await pocketbook($, 'work b9')).toBe('Give the number of an item, 1 to 2.')
   expect(await pocketbook($, 'work')).toBe('Started on 2 items.')
-  expect(await pocketbook($, 'work t2')).toBe('Started on: second')
-  await pocketbook($, 'remove t1')
-  await pocketbook($, 'remove t1')
-  expect(await pocketbook($, 'work')).toBe('The todo list is empty.')
+  expect(await pocketbook($, 'work b2')).toBe('Started on: second')
+  await pocketbook($, 'remove b1')
+  await pocketbook($, 'remove b1')
+  expect(await pocketbook($, 'work')).toBe('The bookmark list is empty.')
 })
 
 test('mode:: changes the mode and keeps it', async ($, on) => {
@@ -127,7 +127,7 @@ test('anything else lists the commands', async ($, on) => {
   world(on)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
-  expect(await pocketbook($, 'help')).toContain('todo -add <text>')
+  expect(await pocketbook($, 'help')).toContain('bookmark -add <text>')
 })
 
 test('setup reads the history, asks for the soft limit and keeps the limits it works out', async ($, on) => {
@@ -169,26 +169,26 @@ test('setup reads the history, asks for the soft limit and keeps the limits it w
   expect(text).toContain('Looked at 1 conversations from the last 14 days (2 requests).')
   expect(text).toContain('Soft limit 200K, hard limit 250K.')
   expect(kept.conf).toEqual({ ceiling: 800_000, soft: 200_000, hard: 250_000, ultraSoft: 150_000, ultraHard: 250_000, isSetUp: true })
-  expect(files['.pocketbook/todo.md']).toBe('# Pocketbook todo\n\n')
+  expect(files['.pocketbook/bookmark.md']).toBe('# Pocketbook bookmark\n\n')
 })
 
 test('details shows the whole request of an item in the pane, with no model', async ($, on) => {
   const { opens } = world(on, {
-    '.pocketbook/todo.md': '# Pocketbook todo\n\n- Short summary\n  First line of the request\n  second line of it\n',
+    '.pocketbook/bookmark.md': '# Pocketbook bookmark\n\n- Short summary\n  First line of the request\n  second line of it\n',
   })
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
-  expect(await pocketbook($, 'details t1')).toBeUndefined()
+  expect(await pocketbook($, 'details b1')).toBeUndefined()
   expect(opens.at(-1)?.id).toBe('pocketbook-list')
   const pane = await $.ui.mount({ plugin: 'pocketbook', component: 'Pane', requestId: 'pocketbook-list', surface: 'terminal', props: {} })
 
-  expect((await pane.find({ type: 'Text', text: /TODO #1/ }))?.text).toBe(' TODO #1 ')
+  expect((await pane.find({ type: 'Text', text: /BOOKMARK #1/ }))?.text).toBe(' BOOKMARK #1 ')
   expect((await pane.find({ type: 'Text', text: /First line/ }))?.text).toBe('First line of the request')
   expect((await pane.find({ type: 'Text', text: /second line/ }))?.text).toBe('second line of it')
   await pane.unmount()
 
-  expect(await pocketbook($, 'details t9')).toBe('Give the number of an item, 1 to 1.')
-  expect(await pocketbook($, 'details b1')).toBe('The backlog list is empty.')
+  expect(await pocketbook($, 'details b9')).toBe('Give the number of an item, 1 to 1.')
+  expect(await pocketbook($, 'details s1')).toBe('The shelf list is empty.')
   expect(await pocketbook($, 'details nope')).toMatch(/Name the item/)
 })
 
@@ -206,70 +206,70 @@ for (const [when, before, after] of IGNORE_CASES) {
     const { files } = world(on, before === undefined ? {} : { '.gitignore': before })
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
-    await pocketbook($, 'todo -add first task')
-    await pocketbook($, 'backlog -add parked task')
+    await pocketbook($, 'bookmark -add first task')
+    await pocketbook($, 'shelf -add parked task')
     expect(files['.gitignore']).toBe(after)
-    expect(files['.pocketbook/todo.md']).toBeDefined()
+    expect(files['.pocketbook/bookmark.md']).toBeDefined()
   })
 }
 
 const summariesOf = (text: string | undefined) => (text ?? '').split('\n').filter(line => line.startsWith('- ')).map(line => line.slice(2))
 
-test('the backlog has the todo list commands, and pop and pop -all bring items back', async ($, on) => {
+test('the shelf has the bookmark list commands, and pop and pop -all bring items back', async ($, on) => {
   const { files } = world(on)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  const todo = () => summariesOf(files['.pocketbook/todo.md'])
-  const backlog = () => summariesOf(files['.pocketbook/backlog.md'])
+  const bookmark = () => summariesOf(files['.pocketbook/bookmark.md'])
+  const shelf = () => summariesOf(files['.pocketbook/shelf.md'])
 
-  expect(await pocketbook($, 'backlog -add first parked')).toBe('Added.')
-  await pocketbook($, 'backlog -add second parked')
-  expect(backlog()).toEqual(['first parked', 'second parked'])
-  expect(todo()).toEqual([])
+  expect(await pocketbook($, 'shelf -add first parked')).toBe('Added.')
+  await pocketbook($, 'shelf -add second parked')
+  expect(shelf()).toEqual(['first parked', 'second parked'])
+  expect(bookmark()).toEqual([])
 
-  expect(await pocketbook($, 'pop b1')).toBe('Moved to the todo list: first parked')
-  expect(todo()).toEqual(['first parked'])
-  expect(backlog()).toEqual(['second parked'])
-  expect(await pocketbook($, 'push t1')).toBe('Moved to the backlog: first parked')
-  expect(await pocketbook($, 'pop -all')).toBe('Moved 2 to the todo list.')
-  expect(todo()).toEqual(['second parked', 'first parked'])
-  expect(backlog()).toEqual([])
+  expect(await pocketbook($, 'pop s1')).toBe('Moved to the bookmark list: first parked')
+  expect(bookmark()).toEqual(['first parked'])
+  expect(shelf()).toEqual(['second parked'])
+  expect(await pocketbook($, 'push b1')).toBe('Moved to the shelf: first parked')
+  expect(await pocketbook($, 'pop -all')).toBe('Moved 2 to the bookmark list.')
+  expect(bookmark()).toEqual(['second parked', 'first parked'])
+  expect(shelf()).toEqual([])
 
-  expect(await pocketbook($, 'pop -all')).toBe('The backlog list is empty.')
-  expect(await pocketbook($, 'pop b1')).toBe('The backlog list is empty.')
-  expect(await pocketbook($, 'remove b1')).toBe('The backlog list is empty.')
-  await pocketbook($, 'backlog -add to delete')
-  expect(await pocketbook($, 'remove b2')).toBe('Give the number of an item, 1 to 1.')
-  expect(await pocketbook($, 'remove b1')).toBe('Removed: to delete')
-  expect(backlog()).toEqual([])
+  expect(await pocketbook($, 'pop -all')).toBe('The shelf list is empty.')
+  expect(await pocketbook($, 'pop s1')).toBe('The shelf list is empty.')
+  expect(await pocketbook($, 'remove s1')).toBe('The shelf list is empty.')
+  await pocketbook($, 'shelf -add to delete')
+  expect(await pocketbook($, 'remove s2')).toBe('Give the number of an item, 1 to 1.')
+  expect(await pocketbook($, 'remove s1')).toBe('Removed: to delete')
+  expect(shelf()).toEqual([])
 
-  expect(await pocketbook($, 'remove b -all')).toBe('The backlog list is empty.')
-  await pocketbook($, 'backlog -add one')
-  await pocketbook($, 'backlog -add two')
-  expect(await pocketbook($, 'remove b -all')).toBe('Removed all 2 from the backlog.')
-  expect(backlog()).toEqual([])
+  expect(await pocketbook($, 'remove s -all')).toBe('The shelf list is empty.')
+  await pocketbook($, 'shelf -add one')
+  await pocketbook($, 'shelf -add two')
+  expect(await pocketbook($, 'remove s -all')).toBe('Removed all 2 from the shelf.')
+  expect(shelf()).toEqual([])
 })
 
-test('todo and backlog open their own list alone, and show is the one that gives both', async ($, on) => {
-  world(on, { '.pocketbook/todo.md': '# Pocketbook todo\n\n- a todo item\n', '.pocketbook/backlog.md': '# Pocketbook backlog\n\n- a parked item\n' })
+test('bookmark and shelf open their own list alone, and show is the one that gives both', async ($, on) => {
+  world(on, { '.pocketbook/bookmark.md': '# Pocketbook bookmark\n\n- a bookmark item\n', '.pocketbook/shelf.md': '# Pocketbook shelf\n\n- a parked item\n' })
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const slot = { plugin: 'pocketbook', component: 'Pane', requestId: 'pocketbook-list', surface: 'terminal', props: {} } as const
 
-  await pocketbook($, 'todo')
+  await pocketbook($, 'bookmark')
   let pane = await $.ui.mount(slot)
-  expect(await pane.find({ type: 'Text', text: /a todo item/ })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: /a bookmark item/ })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: /a parked item/ })).toBeUndefined()
   await pane.unmount()
 
-  await pocketbook($, 'backlog')
+  await pocketbook($, 'shelf')
   pane = await $.ui.mount(slot)
   expect(await pane.find({ type: 'Text', text: /a parked item/ })).toBeDefined()
-  expect(await pane.find({ type: 'Text', text: /a todo item/ })).toBeUndefined()
+  expect(await pane.find({ type: 'Text', text: /a bookmark item/ })).toBeUndefined()
   await pane.unmount()
 })
 
 test('edit puts an item in the prompt box to change, and rewrites it when given the new text', async ($, on) => {
   const filled: string[] = []
-  const { files } = world(on, { '.pocketbook/todo.md': '# Pocketbook todo\n\n- first\n  the full first request\n- second\n', '.pocketbook/backlog.md': '# Pocketbook backlog\n\n- parked\n' })
+  const { files } = world(on, { '.pocketbook/bookmark.md': '# Pocketbook bookmark\n\n- first\n  the full first request\n- second\n', '.pocketbook/shelf.md': '# Pocketbook shelf\n\n- parked\n' })
   on('prompt.fill', (_: unknown, e: { text: string }) => {
     filled.push(e.text)
 
@@ -277,32 +277,42 @@ test('edit puts an item in the prompt box to change, and rewrites it when given 
   })
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
-  expect(await pocketbook($, 'edit 1')).toBe('Name the item by its list and number: t<n> for the todo list, b<n> for the backlog.')
-  expect(await pocketbook($, 'edit t9')).toBe('Give the number of an item, 1 to 2.')
+  expect(await pocketbook($, 'edit 1')).toBe('Name the item by its list and number: b<n> for the bookmark list, s<n> for the shelf.')
+  expect(await pocketbook($, 'edit b9')).toBe('Give the number of an item, 1 to 2.')
+  expect(await pocketbook($, 'edit s1')).toBeUndefined()
+  expect(filled.at(-1)).toBe('/pocketbook edit s1 parked')
   expect(await pocketbook($, 'edit b1')).toBeUndefined()
-  expect(filled.at(-1)).toBe('/pocketbook edit b1 parked')
-  expect(await pocketbook($, 'edit t1')).toBeUndefined()
-  expect(filled.at(-1)).toBe('/pocketbook edit t1 the full first request') // the whole request, not the summary
+  expect(filled.at(-1)).toBe('/pocketbook edit b1 the full first request') // the whole request, not the summary
 
-  expect(await pocketbook($, 'edit t2 second, reworded')).toBe('Edited.')
-  expect(files['.pocketbook/todo.md']).toContain('- second, reworded')
-  expect(files['.pocketbook/todo.md']).toContain('- first')
-  expect(await pocketbook($, 'edit B1 parked again')).toBe('Edited.')
-  expect(files['.pocketbook/backlog.md']).toContain('- parked again')
+  expect(await pocketbook($, 'edit b2 second, reworded')).toBe('Edited.')
+  expect(files['.pocketbook/bookmark.md']).toContain('- second, reworded')
+  expect(files['.pocketbook/bookmark.md']).toContain('- first')
+  expect(await pocketbook($, 'edit S1 parked again')).toBe('Edited.')
+  expect(files['.pocketbook/shelf.md']).toContain('- parked again')
 })
 
 test('push and pop take the right list, and remove names its list by the letter', async ($, on) => {
   world(on)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  await pocketbook($, 'todo -add a todo item')
-  await pocketbook($, 'backlog -add a parked item')
+  await pocketbook($, 'bookmark -add a bookmark item')
+  await pocketbook($, 'shelf -add a parked item')
 
-  expect(await pocketbook($, 'push b1')).toBe('push moves a todo item to the backlog: push t<n>, or push -all.')
-  expect(await pocketbook($, 'pop t1')).toBe('pop brings a backlog item back to the todo list: pop b<n>, or pop -all.')
-  expect(await pocketbook($, 'remove 1')).toBe('Name the item by its list and number: t<n> for the todo list, b<n> for the backlog.')
-  expect(await pocketbook($, 'remove x1')).toBe('Name the item by its list and number: t<n> for the todo list, b<n> for the backlog.')
-  expect(await pocketbook($, 'work b1')).toBe('work takes a todo item: work t<n>.')
-  expect(await pocketbook($, 'remove t -all')).toBe('Removed all 1 from the todo list.')
-  expect(await pocketbook($, 'remove t -all')).toBe('The todo list is empty.')
-  expect(await pocketbook($, 'remove b1')).toBe('Removed: a parked item')
+  expect(await pocketbook($, 'push s1')).toBe('push moves a bookmark item to the shelf: push b<n>, or push -all.')
+  expect(await pocketbook($, 'pop b1')).toBe('pop brings a shelf item back to the bookmark list: pop s<n>, or pop -all.')
+  expect(await pocketbook($, 'remove 1')).toBe('Name the item by its list and number: b<n> for the bookmark list, s<n> for the shelf.')
+  expect(await pocketbook($, 'remove x1')).toBe('Name the item by its list and number: b<n> for the bookmark list, s<n> for the shelf.')
+  expect(await pocketbook($, 'work s1')).toBe('work takes a bookmark item: work b<n>.')
+  expect(await pocketbook($, 'remove b -all')).toBe('Removed all 1 from the bookmark list.')
+  expect(await pocketbook($, 'remove b -all')).toBe('The bookmark list is empty.')
+  expect(await pocketbook($, 'remove s1')).toBe('Removed: a parked item')
+})
+
+test('lists kept under the old file names are still read, and written under the new ones', async ($, on) => {
+  const { files } = world(on, { '.pocketbook/todo.md': '# Pocketbook todo\n\n- old item\n', '.pocketbook/backlog.md': '# Pocketbook backlog\n\n- old parked\n' })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  expect(await pocketbook($, 'work s9')).toBe('Give the number of an item, 1 to 1.') // the shelf has its old item
+  expect(await pocketbook($, 'bookmark -add new item')).toBe('Added.')
+  expect(files['.pocketbook/bookmark.md']).toBe('# Pocketbook bookmark\n\n- old item\n- new item\n')
+  expect(await pocketbook($, 'pop s1')).toBe('Moved to the bookmark list: old parked')
 })

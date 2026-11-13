@@ -5,7 +5,7 @@
     {
       "name": "pocketbook",
       "source": "./plugins/pocketbook-portable",
-      "description": "A todo list and backlog for long conversations, kept in .pocketbook/."
+      "description": "A bookmark list and shelf for long conversations, kept in .pocketbook/."
     }
   ]
 }

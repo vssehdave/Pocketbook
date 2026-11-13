@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { handOver, listing, parse, pick, serialize, summaryOf } from './todo'
+import { handOver, listing, parse, pick, serialize, summaryOf } from './bookmark'
 
 const ITEMS = [
   { summary: 'Rewrite the importer', full: 'Rewrite the importer so it streams.\nKeep the old flags.' },
@@ -8,15 +8,15 @@ const ITEMS = [
 ]
 
 test('a list survives being written and read back', () => {
-  const text = serialize('Pocketbook todo', ITEMS)
+  const text = serialize('Pocketbook bookmark', ITEMS)
 
-  expect(text).toBe('# Pocketbook todo\n\n- Rewrite the importer\n  Rewrite the importer so it streams.\n  Keep the old flags.\n- Fix the typo\n')
+  expect(text).toBe('# Pocketbook bookmark\n\n- Rewrite the importer\n  Rewrite the importer so it streams.\n  Keep the old flags.\n- Fix the typo\n')
   expect(parse(text)).toEqual(ITEMS)
   expect(parse(text.replace(/\n/g, '\r\n'))).toEqual(ITEMS)
 })
 
 test('a file with no items is an empty list', () => {
-  expect(parse('# Pocketbook todo\n\n')).toEqual([])
+  expect(parse('# Pocketbook bookmark\n\n')).toEqual([])
 })
 
 test('the fallback summary is the first line that says something, cut to 60 characters and dots', () => {
@@ -26,7 +26,7 @@ test('the fallback summary is the first line that says something, cut to 60 char
 })
 
 test('items are listed with their numbers, and a number names an item', () => {
-  expect(listing(ITEMS)).toBe('Rewrite the importer [t1]\nFix the typo [t2]')
+  expect(listing(ITEMS)).toBe('Rewrite the importer [b1]\nFix the typo [b2]')
   expect(pick(ITEMS, '2')).toBe(1)
   expect([pick(ITEMS, '0'), pick(ITEMS, '3'), pick(ITEMS, 'two')]).toEqual([undefined, undefined, undefined])
 })
