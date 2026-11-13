@@ -163,7 +163,7 @@ test('the first session works the limits out from the compaction window and keep
   expect(kept.conf).toEqual(CONF)
 })
 
-test('the details button opens the list pane, which shows each item with its number', async ($, on) => {
+test('the show button opens the list pane, which shows each item with its number', async ($, on) => {
   const opens: Array<{ id: string; title: string; closeOnEscape?: true }> = []
   const files: Record<string, string> = { '.pocketbook/todo.md': '# Pocketbook todo\n\n- Fix the typo\n- Write the notes\n' }
   const at = (path: string) => Object.keys(files).find(key => path.replaceAll(String.fromCharCode(92), '/').endsWith(key)) ?? ''
@@ -187,7 +187,7 @@ test('the details button opens the list pane, which shows each item with its num
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const footer = await $.ui.mount(SLOT)
 
-  await footer.press({ key: 'details' })
+  await footer.press({ key: 'show' })
   expect(opens).toEqual([{ id: 'pocketbook-list', title: 'Todo', closeOnEscape: true }])
   await footer.unmount()
 

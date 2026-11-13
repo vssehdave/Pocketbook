@@ -25,20 +25,25 @@ export const serialize = (title: string, items: readonly Item[]) =>
     .map(({ summary, full }) => (full === summary ? `- ${summary}\n` : `- ${summary}\n${full.replace(/^/gm, '  ')}\n`))
     .join('')
 
-// The longest a summary is: one line of a list, and what a request is cut to when no model writes its summary.
+// What a request is cut to when the account is out of usage and no model can summarise it, before the dots that say it was cut.
 export const SUMMARY = 60
 
-// The summary used when no model wrote one: the first line that says something, cut to SUMMARY characters.
-export const summaryOf = (text: string) => {
-  const line = (text.split(/\r?\n/).find(one => one.trim() !== '') ?? '').trim().replace(/\s+/g, ' ')
+// The first line of a text that says something, its spaces squeezed.
+export const oneLine = (text: string) => (text.split(/\r?\n/).find(one => one.trim() !== '') ?? '').trim().replace(/\s+/g, ' ')
 
-  // Nothing rewrote this line, so an email address or something shaped like a key is blanked before it is kept.
-  const clean = line
+// Anything shaped like an email address or a key is blanked. This is a pattern, not a judgement: a password, a name or an address
+// that looks like ordinary words gets through, so it is a net under the model's own redaction, not a replacement for it.
+export const scrub = (line: string) =>
+  line
     .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b/g, '[email]')
     .replace(/\b(?:sk|pk|ghp|gho|xox[a-z])[-_][A-Za-z0-9_-]{6,}/gi, '[key]')
     .replace(/\b[A-Za-z0-9_-]{24,}\b/g, '[key]')
 
-  return clean.length > SUMMARY ? `${clean.slice(0, SUMMARY - 1)}…` : clean
+// The summary used when no model wrote one: the first line that says something, scrubbed and cut to SUMMARY characters and "...".
+export const summaryOf = (text: string) => {
+  const line = scrub(oneLine(text))
+
+  return line.length > SUMMARY ? `${line.slice(0, SUMMARY).trimEnd()}...` : line
 }
 
 // Each summary and its number, for a prompt to the model.

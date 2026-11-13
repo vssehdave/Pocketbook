@@ -159,3 +159,23 @@ test('setup reads the history, asks for the soft limit and keeps the limits it w
   expect(kept.conf).toEqual({ ceiling: 800_000, soft: 200_000, hard: 250_000, ultraSoft: 150_000, ultraHard: 250_000, isSetUp: true })
   expect(files['.pocketbook/todo.md']).toBe('# Pocketbook todo\n\n')
 })
+
+test('details shows the whole request of an item in the pane, with no model', async ($, on) => {
+  const { opens } = world(on, {
+    '.pocketbook/todo.md': '# Pocketbook todo\n\n- Short summary\n  First line of the request\n  second line of it\n',
+  })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  expect(await pocketbook($, 'details -todo 1')).toBeUndefined()
+  expect(opens.at(-1)?.id).toBe('pocketbook-list')
+  const pane = await $.ui.mount({ plugin: 'pocketbook', component: 'Pane', requestId: 'pocketbook-list', surface: 'terminal', props: {} })
+
+  expect((await pane.find({ type: 'Text', text: /TODO #1/ }))?.text).toBe(' TODO #1 ')
+  expect((await pane.find({ type: 'Text', text: /First line/ }))?.text).toBe('First line of the request')
+  expect((await pane.find({ type: 'Text', text: /second line/ }))?.text).toBe('second line of it')
+  await pane.unmount()
+
+  expect(await pocketbook($, 'details -todo 9')).toBe('Give the number of an item, 1 to 1.')
+  expect(await pocketbook($, 'details -backlog 1')).toBe('The backlog list is empty.')
+  expect(await pocketbook($, 'details nope')).toMatch(/Say which list/)
+})
