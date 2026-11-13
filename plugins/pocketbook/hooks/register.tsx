@@ -171,7 +171,9 @@ async function continueRun($: any) {
 
   await update($, added, () => false)
 
-  if (items.length === 0) {
+  if ((await read($, mode)) === 'off') {
+    await update($, going, () => null) // off starts nothing on its own, a run included
+  } else if (items.length === 0) {
     await update($, going, () => null)
     say($, 'The todo list is done.')
   } else if ((await read($, usage)) >= OUT) {
@@ -190,7 +192,10 @@ async function afterCompact($: any) {
   await update($, isHeld, () => false)
   await update($, added, () => false) // the run covers what was added
   await refresh($)
-  await startRun($) // the prompt it submits starts a turn of its own once the session is idle
+
+  if ((await read($, mode)) !== 'off') {
+    await startRun($) // the prompt it submits starts a turn of its own once the session is idle
+  }
 }
 
 // Compacts now; false when the engine would not (a turn is still running, or a hook refused). Only ever asked for between replies:
@@ -330,6 +335,10 @@ async function addItem($: any, list: 'TODO' | 'BACKLOG', text: string) {
 // A reply has ended with todo items added during it. With usage left the model is handed the list now; with none it waits for the
 // next prompt, which carries the same word (see prompt.submit).
 async function handBack($: any) {
+  if ((await read($, mode)) === 'off') {
+    return
+  }
+
   const items = await readList($, TODO)
 
   if ((await read($, usage)) >= OUT) {
@@ -778,7 +787,7 @@ export const register: Register = on => {
       extra.push(rule(past.tokens, past.limit, TODO))
     }
 
-    if (e.command === undefined && from === 'composer' && (await read($, added))) {
+    if (e.command === undefined && from === 'composer' && (await read($, added)) && (await read($, mode)) !== 'off') {
       await update($, added, () => false)
       extra.push(`Pocketbook: todo items were added while you worked. After this request, work through the todo list in ${TODO} one item at a time and delete each as it is done.`)
     }
