@@ -82,14 +82,17 @@ const PANE = 'pocketbook-list'
 const rev = atom({ plugin: 'pocketbook', key: 'rev' } as const, 0)
 const topTodo = atom({ plugin: 'pocketbook', key: 'topTodo' } as const, 0)
 const topBacklog = atom({ plugin: 'pocketbook', key: 'topBacklog' } as const, 0)
+// What the pane shows: both lists, one split top and bottom (the footer's show button), or one list alone (the todo and backlog commands).
+const paneView = atom({ plugin: 'pocketbook', key: 'paneView' } as const, 'BOTH' as 'BOTH' | 'TODO' | 'BACKLOG')
 // The item whose full request the pane shows in place of the lists, and the first line of it showing; null for the lists.
 const detail = atom({ plugin: 'pocketbook', key: 'detail' } as const, null as { list: 'TODO' | 'BACKLOG'; n: number } | null)
 const topDetail = atom({ plugin: 'pocketbook', key: 'topDetail' } as const, 0)
 
 // Opens the pane: the todo list on the top half, the backlog on the bottom. Only ever for the person's own press or command: the
 // engine draws such an open at any width, and only if it comes before any await. A toast cannot hold a list: it shows three lines.
-async function showList($: any) {
+async function showList($: any, view: 'BOTH' | 'TODO' | 'BACKLOG' = 'BOTH') {
   const opening = $.ui.open({ id: PANE, title: 'Todo', closeOnEscape: true })
+  await update($, paneView, () => view)
   await update($, detail, () => null)
   await update($, topTodo, () => 0)
   await update($, topBacklog, () => 0)
@@ -240,15 +243,19 @@ async function readList($: any, path: string): Promise<Item[]> {
   return (await $.fs.exists(path)) ? parse(await $.fs.read(path)) : []
 }
 
-// The lists are the person's notes, not the project's: the folder is kept out of git wherever there is a repository.
-async function writeList($: any, path: string, items: readonly Item[]) {
-  await $.fs.write(path, serialize(path === TODO ? 'Pocketbook todo' : 'Pocketbook backlog', items))
+// The lists are the person's notes, not the project's, so .pocketbook/ is in .gitignore before either list is written; the file is
+// created when there is none. If that cannot be done the list is not written, so the folder is never left unignored.
+async function ensureIgnored($: any) {
+  const ignored = (await $.fs.exists('.gitignore')) ? ((await $.fs.read('.gitignore')) as string) : ''
 
-  const ignored = (await $.fs.exists('.gitignore')) ? ((await $.fs.read('.gitignore')) as string) : undefined
-
-  if (ignored === undefined ? await $.fs.exists('.git') : !/^\.pocketbook\/?$/m.test(ignored)) {
-    await $.fs.write('.gitignore', `${ignored === undefined || ignored.endsWith('\n') || ignored === '' ? (ignored ?? '') : `${ignored}\n`}.pocketbook/\n`)
+  if (!/^\/?\.pocketbook\/?\*?\s*$/m.test(ignored)) {
+    await $.fs.write('.gitignore', `${ignored === '' || ignored.endsWith('\n') ? ignored : `${ignored}\n`}.pocketbook/\n`)
   }
+}
+
+async function writeList($: any, path: string, items: readonly Item[]) {
+  await ensureIgnored($)
+  await $.fs.write(path, serialize(path === TODO ? 'Pocketbook todo' : 'Pocketbook backlog', items))
 }
 
 // One line that says what a request asks, with what should not be repeated left out. With the account out of usage no model can write
@@ -273,12 +280,19 @@ async function summarize($: any, text: string) {
   return (answer?.isAnswered ? scrub(oneLine(answer.text)) : '') || summaryOf(text)
 }
 
-async function addTodo($: any, text: string) {
-  const items = await readList($, TODO)
-  await writeList($, TODO, [...items, { summary: await summarize($, text), full: text }])
-
+// A todo item added or moved in while a reply runs is pointed out to the model once that reply is over.
+async function noteAdded($: any) {
   if (await read($, isTurn)) {
     await update($, added, () => true)
+  }
+}
+
+async function addItem($: any, list: 'TODO' | 'BACKLOG', text: string) {
+  const path = list === 'TODO' ? TODO : BACKLOG
+  await writeList($, path, [...(await readList($, path)), { summary: await summarize($, text), full: text }])
+
+  if (list === 'TODO') {
+    await noteAdded($)
   }
 }
 
@@ -428,7 +442,11 @@ const USAGE = `Pocketbook commands:
   todo -remove <n>    remove item n
   stash <n>           move item n to the backlog
   archive             move the whole todo list to the backlog
-  backlog             show the backlog`
+  backlog             show the backlog
+  backlog -add <text>   add to it
+  backlog -remove <n>   remove item n
+  unstash <n>         move item n back to the todo list
+  restore             move the whole backlog to the todo list`
 
 // What /pocketbook answers for the words typed after it.
 async function run($: any, args: string): Promise<string> {
@@ -479,66 +497,86 @@ async function run($: any, args: string): Promise<string> {
     return ''
   }
 
-  if (word === 'backlog') {
-    await showList($)
+  if (word === 'todo' || word === 'backlog') {
+    const list = word === 'todo' ? 'TODO' : 'BACKLOG'
+    const path = list === 'TODO' ? TODO : BACKLOG
+    const kept = await readList($, path)
 
-    return ''
-  }
+    if (rest === '') {
+      await showList($, list)
 
-  const items = await readList($, TODO)
-
-  if (word === 'todo' && rest === '') {
-    await showList($)
-
-    return ''
-  }
-
-  if (word === 'todo' && restWords[0] === '-add') {
-    const text = rest.slice('-add'.length).trim()
-
-    if (text === '') {
-      return 'Nothing to add: write the task after -add.'
+      return ''
     }
 
-    await addTodo($, text)
+    if (restWords[0] === '-add') {
+      const text = rest.slice('-add'.length).trim()
 
-    await showList($)
+      if (text === '') {
+        return 'Nothing to add: write the task after -add.'
+      }
 
-    return 'Added.'
+      await addItem($, list, text)
+      await showList($, list)
+
+      return 'Added.'
+    }
+
+    if (restWords[0] === '-remove') {
+      const at = pick(kept, restWords[1] ?? '')
+
+      if (at === undefined) {
+        return kept.length === 0 ? `The ${word} list is empty.` : `Give the number of an item, 1 to ${kept.length}.`
+      }
+
+      await writeList($, path, kept.filter((_, i) => i !== at))
+      await showList($, list)
+
+      return `Removed: ${kept[at]!.summary}`
+    }
+
+    return USAGE
   }
 
-  const isRemove = word === 'todo' && restWords[0] === '-remove'
-
-  if (isRemove || word === 'stash') {
-    const at = pick(items, isRemove ? (restWords[1] ?? '') : rest)
+  // stash and archive go from the todo list to the backlog; unstash and restore come back.
+  if (word === 'stash' || word === 'unstash') {
+    const [from, to] = word === 'stash' ? [TODO, BACKLOG] : [BACKLOG, TODO]
+    const source = await readList($, from)
+    const at = pick(source, rest)
 
     if (at === undefined) {
-      return items.length === 0 ? 'The todo list is empty.' : `Give the number of an item, 1 to ${items.length}.`
+      return source.length === 0 ? `The ${from === TODO ? 'todo' : 'backlog'} list is empty.` : `Give the number of an item, 1 to ${source.length}.`
     }
 
-    if (!isRemove) {
-      await writeList($, BACKLOG, [...(await readList($, BACKLOG)), items[at]!])
-    }
+    await writeList($, to, [...(await readList($, to)), source[at]!]) // into the other list first, so a failure leaves a copy, not a loss
+    await writeList($, from, source.filter((_, i) => i !== at))
 
-    const left = items.filter((_, i) => i !== at)
-    await writeList($, TODO, left)
+    if (to === TODO) {
+      await noteAdded($)
+    }
 
     await showList($)
 
-    return `${isRemove ? 'Removed' : 'Moved to the backlog'}: ${items[at]!.summary}`
+    return `Moved to the ${to === TODO ? 'todo list' : 'backlog'}: ${source[at]!.summary}`
   }
 
-  if (word === 'archive') {
-    if (items.length === 0) {
-      return 'The todo list is empty.'
+  if (word === 'archive' || word === 'restore') {
+    const [from, to] = word === 'archive' ? [TODO, BACKLOG] : [BACKLOG, TODO]
+    const source = await readList($, from)
+
+    if (source.length === 0) {
+      return `The ${from === TODO ? 'todo' : 'backlog'} list is empty.`
     }
 
-    await writeList($, BACKLOG, [...(await readList($, BACKLOG)), ...items])
-    await writeList($, TODO, [])
+    await writeList($, to, [...(await readList($, to)), ...source])
+    await writeList($, from, [])
+
+    if (to === TODO) {
+      await noteAdded($)
+    }
 
     await showList($)
 
-    return `Moved ${items.length} to the backlog.`
+    return `Moved ${source.length} to the ${to === TODO ? 'todo list' : 'backlog'}.`
   }
 
   return USAGE
@@ -565,9 +603,12 @@ async function loadConf($: any) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
-    await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | mode::<name> | todo | todo -add <text> | todo -remove <n> | stash <n> | archive | backlog | details -todo|-backlog <n>]' })
+    await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | mode::<name> | todo | todo -add <text> | todo -remove <n> | stash <n> | archive | backlog | backlog -add <text> | backlog -remove <n> | unstash <n> | restore | details -todo|-backlog <n>]' })
     await loadConf($)
     await update($, isTurn, () => false)
+    // Lists already there are put under .gitignore now, not only when next written; a filesystem that will not say is left be.
+    await (async () => ((await $.fs.exists(TODO)) || (await $.fs.exists(BACKLOG)) ? ensureIgnored($) : undefined))().catch(() => undefined)
+
     // Pocketbook compacts by its own limits, so Claude Code's own automatic compaction is turned off; a refusal (a managed setting) is left be.
     await $.config.set({ key: 'autoCompact', value: false }).catch(() => undefined)
     await refresh($)
@@ -638,7 +679,7 @@ export const register: Register = on => {
     ) {
       if (await isBusy($)) {
         if (e.command === undefined) {
-          await addTodo($, e.text)
+          await addItem($, 'TODO', e.text)
         }
 
       
@@ -717,11 +758,12 @@ export const register: Register = on => {
     return result
   })
 
-  // The list pane: the todo list on the top half, the backlog on the bottom, each with its own title, arrows and page. A title sits
-  // between rules that fill the width, then each summary from the left with its number at the right edge, on the item's first line; a
-  // long summary wraps under itself. It follows the pane's width, so it needs no padding. A pane drawn inline has about a third of the
-  // terminal's height and does not scroll, so what is too long is paged with arrows. The engine draws the close mark. After
-  // `details`, the pane holds one item's whole request instead, under the title "TODO #n" or "BACKLOG #n".
+  // The list pane. The footer's show button gives both lists, the todo list on the top half and the backlog on the bottom; the todo and
+  // backlog commands give one list alone. Each list has a title between rules that fill the width, then each summary from the left with
+  // its number at the right edge, on the item's first line, a long summary wrapping under itself; the number opens the item. It follows
+  // the pane's width, so it needs no padding. A pane drawn inline has about a third of the terminal's height and does not scroll, so
+  // what is too long is paged with arrows at the right of its title. The engine draws the close mark. An item opened by its number or by
+  // `details` shows its whole request under "TODO #n" or "BACKLOG #n", with [back] at the left of the title.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     await read($, rev)
@@ -730,8 +772,9 @@ export const register: Register = on => {
     const bodyRows = props?.scroll?.bodyRows ?? Math.floor((e.viewport?.rows ?? 24) / 3) - 2
     const wide = Math.max(20, (props?.bodyColumns ?? e.viewport?.columns ?? 80) - 5) // the width of a summary, after the number
 
-    const rule = (title: string, tail: unknown) => (
+    const rule = (title: string, tail: unknown, lead?: unknown) => (
       <Box key={`rule:${title}`}>
+        {lead}
         <Box width={0} flexGrow={1} height={1} overflow="hidden">
           <Text dimColor>{'-'.repeat(300)}</Text>
         </Box>
@@ -767,10 +810,10 @@ export const register: Register = on => {
                   <Text dimColor> [▼]</Text>
                 </Button>
               )}
-              <Button key="back" plain onPress={() => void showList($)}>
-                <Text dimColor> [back]</Text>
-              </Button>
             </Box>,
+            <Button key="back" plain onPress={() => void update($, detail, () => null)}>
+              <Text dimColor>[back] </Text>
+            </Button>,
           )}
           {lines.slice(start, end).map((line, i) => (
             <Text key={`${start + i}`}>{line === '' ? ' ' : line}</Text>
@@ -779,9 +822,11 @@ export const register: Register = on => {
       )
     }
 
-    const half = Math.max(2, Math.floor((bodyRows - 2) / 2)) // item lines per half
+    const view = await read($, paneView)
+    const cap = view === 'BOTH' ? Math.max(2, Math.floor((bodyRows - 2) / 2)) : Math.max(2, bodyRows - 1) // item lines a list has
 
-    const part = async (title: 'TODO' | 'BACKLOG', path: string) => {
+    const part = async (title: 'TODO' | 'BACKLOG') => {
+      const path = title === 'TODO' ? TODO : BACKLOG
       const items = await readList($, path)
       const lines = (i: number) => Math.max(1, Math.ceil(items[i]!.summary.length / wide))
       const first = title === 'TODO' ? await read($, topTodo) : await read($, topBacklog)
@@ -790,7 +835,7 @@ export const register: Register = on => {
       let end = start
       let used = 0
 
-      while (end < items.length && (end === start || used + lines(end) <= half)) {
+      while (end < items.length && (end === start || used + lines(end) <= cap)) {
         used += lines(end)
         end += 1
       }
@@ -818,7 +863,9 @@ export const register: Register = on => {
               <Box flexGrow={1} flexShrink={1}>
                 <Text>{item.summary}</Text>
               </Box>
-              <Text dimColor>{`[${start + i + 1}]`}</Text>
+              <Button key={`open:${title}:${start + i + 1}`} plain onPress={() => void showDetail($, title, start + i + 1)}>
+                <Text dimColor>{`[${start + i + 1}]`}</Text>
+              </Button>
             </Box>
           ))}
         </Box>
@@ -827,8 +874,8 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
-        {await part('TODO', TODO)}
-        {await part('BACKLOG', BACKLOG)}
+        {view !== 'BACKLOG' && (await part('TODO'))}
+        {view !== 'TODO' && (await part('BACKLOG'))}
       </Box>
     )
   })
