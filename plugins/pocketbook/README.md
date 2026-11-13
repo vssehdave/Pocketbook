@@ -35,14 +35,14 @@ Pocketbook turns Claude Code's own automatic compaction off, in every mode, so i
 | `/pocketbook todo -add <text>` | add an item |
 | `/pocketbook todo -remove <n>` | remove item n |
 | `/pocketbook stash <n>` | move item n to the backlog |
-| `/pocketbook archive` | move the whole todo list to the backlog |
+| `/pocketbook stash -all` | move the whole todo list to the backlog |
 | `/pocketbook backlog` | show the backlog alone |
 | `/pocketbook backlog -add <text>` | add an item to the backlog |
 | `/pocketbook backlog -remove <n>` | remove backlog item n |
 | `/pocketbook backlog -remove -all` (also `todo -remove -all`) | empty that list |
 | `/pocketbook unstash <n>` | move backlog item n back to the todo list |
 | `/pocketbook work` or `work <n>` | hand the todo list, or item n, to the model now. Past the soft limit it compacts first, and the list is handed over after. Refused when usage is used up. The model is told to read each item's full request in the file, since the list shows only summaries |
-| `/pocketbook restore` | move the whole backlog back to the todo list |
+| `/pocketbook unstash -all` | move the whole backlog back to the todo list |
 | `/pocketbook details -todo <n>` or `-backlog <n>` | open the pane on the whole request of that item, under the title `TODO #n` or `BACKLOG #n`; `[back]` returns to the lists. It reads the list file and calls no model, so it works when usage has run out |
 
 The footer's `show` button opens one pane with the todo list on the top half and the backlog on the bottom half. `/pocketbook todo` and `/pocketbook backlog` open their own list alone, using the whole pane. Each list has a title between dashes that fill the width, then its summaries from the left with their numbers at the right edge, on the item's first line, a long summary wrapping under itself. Click a number to open that item's whole request under the title `TODO #n` or `BACKLOG #n`, with `[back]` at the left of the title. The pane only ever opens when you press or type something, never by itself. The ✕ in its corner or Escape closes it, and it follows the lists as you change them. A list with more items than it has room for (a pane above the prompt is about a third of the terminal's height) is paged with `[▲]` and `[▼]` at the right of its title. A toast was tried first and cannot work: the engine shows at most three lines of one and turns every line break into a replacement character. None of the commands calls the model. The lists are `.pocketbook/todo.md` and `.pocketbook/backlog.md` in the project, and `.pocketbook/` is put in `.gitignore` before either list is written. The `.gitignore` is created if there is none, in a repository or not, and a list is not written if that cannot be done. A folder whose lists already exist is covered at the start of a session. Each item is a one-line summary with the full request under it.

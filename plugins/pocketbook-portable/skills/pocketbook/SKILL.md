@@ -1,6 +1,6 @@
 ---
 name: pocketbook
-description: "Keeps a todo list and a backlog for the project in .pocketbook/. Use when the user mentions their todo list or backlog, asks you to add, remove, stash or archive an item, asks what is left to do, or when a request is too large to start in the room left and should wait on the list. Also use after finishing a request if the todo list has items."
+description: "Keeps a todo list and a backlog for the project in .pocketbook/. Use when the user mentions their todo list or backlog, asks you to add, remove, stash or unstash an item, asks what is left to do, or when a request is too large to start in the room left and should wait on the list. Also use after finishing a request if the todo list has items."
 ---
 
 # Pocketbook
@@ -15,15 +15,15 @@ The project's todo list is `.pocketbook/todo.md` and its backlog `.pocketbook/ba
 | add an item | `node SCRIPT todo -add <the request, in full>` |
 | remove item n (when it is done) | `node SCRIPT todo -remove <n>` |
 | move item n to the backlog | `node SCRIPT stash <n>` |
-| move the whole list to the backlog | `node SCRIPT archive` |
+| move the whole list to the backlog | `node SCRIPT stash -all` |
 | show the backlog | `node SCRIPT backlog` |
 | remove backlog item n | `node SCRIPT backlog -remove <n>` |
 | empty the backlog | `node SCRIPT backlog -remove -all` |
 | move backlog item n back to the todo list | `node SCRIPT unstash <n>` |
-| move the whole backlog back | `node SCRIPT restore` |
+| move the whole backlog back | `node SCRIPT unstash -all` |
 | read the whole request of an item | `node SCRIPT details -todo <n>` or `details -backlog <n>` |
 
-The user can also type `pb todo`, `pb todo -add <text>`, `pb todo -remove <n>`, `pb stash <n>`, `pb archive`, `pb backlog`, `pb unstash <n>`, `pb restore` or `pb details -todo <n>` as a prompt. A hook answers those itself, so they reach you only if hooks are off; if one does, run the same command and show the answer.
+The user can also type `pb todo`, `pb todo -add <text>`, `pb todo -remove <n>`, `pb stash <n>`, `pb stash -all`, `pb backlog`, `pb unstash <n>`, `pb unstash -all` or `pb details -todo <n>` as a prompt. A hook answers those itself, so they reach you only if hooks are off; if one does, run the same command and show the answer.
 
 ## How to work with the list
 

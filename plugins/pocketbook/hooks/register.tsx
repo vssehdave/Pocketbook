@@ -441,13 +441,13 @@ const USAGE = `Pocketbook commands:
   todo -add <text>    add to it
   todo -remove <n>    remove item n
   stash <n>           move item n to the backlog
-  archive             move the whole todo list to the backlog
+  stash -all          move the whole todo list to the backlog
   backlog             show the backlog
   backlog -add <text>   add to it
   backlog -remove <n>   remove item n
   todo|backlog -remove -all  remove every item from that list
   unstash <n>         move item n back to the todo list
-  restore             move the whole backlog to the todo list
+  unstash -all        move the whole backlog to the todo list
   work [n]            hand the todo list, or item n, to the model now`
 
 // What /pocketbook answers for the words typed after it.
@@ -584,8 +584,8 @@ async function run($: any, args: string): Promise<string> {
     return `Started on: ${one.summary}`
   }
 
-  // stash and archive go from the todo list to the backlog; unstash and restore come back.
-  if (word === 'stash' || word === 'unstash') {
+  // stash goes from the todo list to the backlog, unstash comes back; with -all it moves the whole list.
+  if ((word === 'stash' || word === 'unstash') && rest !== '-all') {
     const [from, to] = word === 'stash' ? [TODO, BACKLOG] : [BACKLOG, TODO]
     const source = await readList($, from)
     const at = pick(source, rest)
@@ -606,8 +606,8 @@ async function run($: any, args: string): Promise<string> {
     return `Moved to the ${to === TODO ? 'todo list' : 'backlog'}: ${source[at]!.summary}`
   }
 
-  if (word === 'archive' || word === 'restore') {
-    const [from, to] = word === 'archive' ? [TODO, BACKLOG] : [BACKLOG, TODO]
+  if ((word === 'stash' || word === 'unstash') && rest === '-all') {
+    const [from, to] = word === 'stash' ? [TODO, BACKLOG] : [BACKLOG, TODO]
     const source = await readList($, from)
 
     if (source.length === 0) {
@@ -650,7 +650,7 @@ async function loadConf($: any) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
-    await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | mode::<name> | todo | todo -add <text> | todo -remove <n> | stash <n> | archive | backlog | backlog -add <text> | backlog -remove <n> | unstash <n> | restore | work [n] | details -todo|-backlog <n>]' })
+    await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | mode::<name> | todo | todo -add <text> | todo -remove <n> | stash <n> | stash -all | backlog | backlog -add <text> | backlog -remove <n> | unstash <n> | unstash -all | work [n] | details -todo|-backlog <n>]' })
     await loadConf($)
     await update($, isTurn, () => false)
     // Lists already there are put under .gitignore now, not only when next written; a filesystem that will not say is left be.

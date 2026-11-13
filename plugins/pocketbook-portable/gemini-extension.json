@@ -1,6 +1,6 @@
 {
   "name": "pocketbook",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "A todo list and backlog for long conversations. Type pb todo -add <text> at any time and the item waits on the list until the agent gets to it.",
   "contextFileName": "GEMINI.md"
 }
