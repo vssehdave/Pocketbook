@@ -5,7 +5,7 @@ import type { Conf, Meter, Mode, Units } from '../types'
 import { K, MODES, band, ceilingOf, defaults, isMode, leftOf, limitsOf, modeColor, modeLine, modeReport, rule, softNote, usedText } from './lib'
 import type { History } from './lib'
 import { COMPACTED, PATTERN, confFor, hardLimit, sizesOf, suggested, table, tokensIn } from './analysis'
-import { BACKLOG, TODO, listing, oneLine, parse, pick, scrub, serialize, summaryOf } from './todo'
+import { BACKLOG, TODO, handOver, listing, oneLine, parse, pick, scrub, serialize, summaryOf } from './todo'
 import type { Item } from './todo'
 
 const meter = atom({ plugin: 'pocketbook', key: 'meter' } as const, null as Meter)
@@ -157,7 +157,7 @@ async function afterCompact($: any) {
   // Not awaited: the prompt starts a turn of its own once the session is idle, which is after this hook has returned.
   void $.prompt
     .submit({
-      text: `The conversation was just compacted or cleared. Work through the todo list in ${TODO} one item at a time, and delete each item from the file as soon as it is done:\n${listing(items)}`,
+      text: handOver('The conversation was just compacted or cleared.', items),
     })
     .catch(() => undefined)
 }
@@ -308,7 +308,7 @@ async function handBack($: any) {
   }
 
   await update($, added, () => false)
-  void $.prompt.submit({ text: `Todo items were added while you worked. Work through the todo list in ${TODO} one item at a time, and delete each item from the file as soon as it is done:\n${listing(items)}` }).catch(() => undefined)
+  void $.prompt.submit({ text: handOver('Todo items were added while you worked.', items) }).catch(() => undefined)
 }
 
 // The context size of every request in the transcripts of the last `days` days, per conversation. Claude Code keeps them under its
@@ -447,7 +447,8 @@ const USAGE = `Pocketbook commands:
   backlog -remove <n>   remove item n
   todo|backlog -remove -all  remove every item from that list
   unstash <n>         move item n back to the todo list
-  restore             move the whole backlog to the todo list`
+  restore             move the whole backlog to the todo list
+  work [n]            hand the todo list, or item n, to the model now`
 
 // What /pocketbook answers for the words typed after it.
 async function run($: any, args: string): Promise<string> {
@@ -549,6 +550,40 @@ async function run($: any, args: string): Promise<string> {
     return USAGE
   }
 
+  // Hands the todo list (or one item of it) to the model now. Past the soft limit the model is told to start nothing large, so the
+  // conversation is compacted first, and the hand-over after the compaction carries the list.
+  if (word === 'work') {
+    const items = await readList($, TODO)
+    const at = rest === '' ? -1 : pick(items, rest)
+
+    if (items.length === 0) {
+      return 'The todo list is empty.'
+    }
+
+    if (rest !== '' && at === undefined) {
+      return `Give the number of an item, 1 to ${items.length}.`
+    }
+
+    if ((await read($, usage)) >= OUT) {
+      return 'Usage is used up, so nothing can start until it resets. The list stays as it is.'
+    }
+
+    if ((await pastSoft($)) !== undefined && (await compactNow($))) {
+      return 'Past the soft limit: compacted first, and the list is handed over now.'
+    }
+
+    if (at === undefined || at === -1) {
+      void $.prompt.submit({ text: handOver('Start on the todo list now.', items) }).catch(() => undefined)
+
+      return `Started on ${items.length} item${items.length === 1 ? '' : 's'}.`
+    }
+
+    const one = items[at]!
+    void $.prompt.submit({ text: `Work on this todo item now: ${one.summary} Its full request is under it in ${TODO}: read it before starting, and delete the item from the file when it is done.` }).catch(() => undefined)
+
+    return `Started on: ${one.summary}`
+  }
+
   // stash and archive go from the todo list to the backlog; unstash and restore come back.
   if (word === 'stash' || word === 'unstash') {
     const [from, to] = word === 'stash' ? [TODO, BACKLOG] : [BACKLOG, TODO]
@@ -615,7 +650,7 @@ async function loadConf($: any) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
-    await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | mode::<name> | todo | todo -add <text> | todo -remove <n> | stash <n> | archive | backlog | backlog -add <text> | backlog -remove <n> | unstash <n> | restore | details -todo|-backlog <n>]' })
+    await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | mode::<name> | todo | todo -add <text> | todo -remove <n> | stash <n> | archive | backlog | backlog -add <text> | backlog -remove <n> | unstash <n> | restore | work [n] | details -todo|-backlog <n>]' })
     await loadConf($)
     await update($, isTurn, () => false)
     // Lists already there are put under .gitignore now, not only when next written; a filesystem that will not say is left be.

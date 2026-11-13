@@ -55,3 +55,8 @@ export const pick = (items: readonly Item[], typed: string) => {
 
   return at >= 0 && at < items.length ? at : undefined
 }
+
+// What the model is handed to work from. The list shows one-line summaries, which leave out names and pasted data on purpose, so it is
+// told to read the full request under each item in the file.
+export const handOver = (intro: string, items: readonly Item[]) =>
+  `${intro} Work through the todo list in ${TODO} one item at a time, and delete each item from the file as soon as it is done. Each item's full request is under it in the file: read it before starting, because the summary leaves things out.\n${listing(items)}`

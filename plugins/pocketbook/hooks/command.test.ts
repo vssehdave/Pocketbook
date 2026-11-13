@@ -61,6 +61,18 @@ test('the todo and backlog commands change the lists and open the list pane', as
   expect(summaries('.pocketbook/backlog.md')).toEqual(['second task', 'third task'])
 })
 
+test('work starts the whole list or one item, and refuses a bad number or an empty list', async ($, on) => {
+  world(on, { '.pocketbook/todo.md': '# Pocketbook todo\n\n- first\n  the full first request\n- second\n' })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  expect(await pocketbook($, 'work 9')).toBe('Give the number of an item, 1 to 2.')
+  expect(await pocketbook($, 'work')).toBe('Started on 2 items.')
+  expect(await pocketbook($, 'work 2')).toBe('Started on: second')
+  await pocketbook($, 'todo -remove 1')
+  await pocketbook($, 'todo -remove 1')
+  expect(await pocketbook($, 'work')).toBe('The todo list is empty.')
+})
+
 test('mode:: changes the mode and keeps it', async ($, on) => {
   const { kept } = world(on)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
