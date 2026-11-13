@@ -80,3 +80,19 @@ test('a broken state file is read as empty', () => {
 
   assert.equal(hook(cwd, 'prompt', 'codex', { prompt: 'hello' }, 'p.mjs'), undefined)
 })
+
+test('the backlog is emptied, restored from and read in full', () => {
+  const cwd = dir()
+  run(cwd, 'todo -add one\nwith a second line')
+  run(cwd, 'todo -add two')
+  run(cwd, 'archive')
+  assert.equal(run(cwd, 'details -backlog 1'), 'BACKLOG #1\none\nwith a second line')
+  assert.equal(run(cwd, 'unstash 2'), 'Moved to the todo list: two\nThe todo list:\ntwo [1]')
+  assert.equal(run(cwd, 'details -todo 1'), 'TODO #1\ntwo')
+  assert.equal(run(cwd, 'restore'), 'Moved 1 to the todo list.\nThe todo list:\ntwo [1]\none [2]')
+  run(cwd, 'archive')
+  assert.equal(run(cwd, 'backlog -remove 1'), 'Removed: two')
+  assert.equal(run(cwd, 'backlog'), 'one [1]')
+  assert.equal(run(cwd, 'details -todo 1'), 'Use: details -todo <n> or details -backlog <n>.')
+  assert.equal(hook(cwd, 'prompt', 'codex', { prompt: 'pb restore' }, 'p.mjs').reason, 'Moved 1 to the todo list.\nThe todo list:\none [1]')
+})
