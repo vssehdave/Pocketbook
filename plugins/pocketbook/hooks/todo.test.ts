@@ -19,9 +19,9 @@ test('a file with no items is an empty list', () => {
   expect(parse('# Pocketbook todo\n\n')).toEqual([])
 })
 
-test('the fallback summary is the first line that says something, cut to 60 characters', () => {
+test('the fallback summary is the first line that says something, cut to 60 characters and dots', () => {
   expect(summaryOf('\n  do   this\nand that')).toBe('do this')
-  expect(summaryOf('word '.repeat(40))).toHaveLength(60)
+  expect(summaryOf('word '.repeat(40))).toBe(`${'word '.repeat(11)}word...`) // 59 characters and the dots
   expect(summaryOf('use sk-test-FAKE-0000-1111 and mail a.b@example.com')).toBe('use [key] and mail [email]')
 })
 

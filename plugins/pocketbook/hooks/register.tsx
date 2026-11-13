@@ -5,7 +5,7 @@ import type { Conf, Meter, Mode, Units } from '../types'
 import { K, MODES, band, ceilingOf, defaults, isMode, leftOf, limitsOf, modeColor, modeLine, modeReport, rule, softNote, usedText } from './lib'
 import type { History } from './lib'
 import { COMPACTED, PATTERN, confFor, hardLimit, sizesOf, suggested, table, tokensIn } from './analysis'
-import { BACKLOG, SUMMARY, TODO, listing, parse, pick, serialize, summaryOf } from './todo'
+import { BACKLOG, TODO, listing, oneLine, parse, pick, scrub, serialize, summaryOf } from './todo'
 import type { Item } from './todo'
 
 const meter = atom({ plugin: 'pocketbook', key: 'meter' } as const, null as Meter)
@@ -82,15 +82,61 @@ const PANE = 'pocketbook-list'
 const rev = atom({ plugin: 'pocketbook', key: 'rev' } as const, 0)
 const topTodo = atom({ plugin: 'pocketbook', key: 'topTodo' } as const, 0)
 const topBacklog = atom({ plugin: 'pocketbook', key: 'topBacklog' } as const, 0)
+// The item whose full request the pane shows in place of the lists, and the first line of it showing; null for the lists.
+const detail = atom({ plugin: 'pocketbook', key: 'detail' } as const, null as { list: 'TODO' | 'BACKLOG'; n: number } | null)
+const topDetail = atom({ plugin: 'pocketbook', key: 'topDetail' } as const, 0)
 
 // Opens the pane: the todo list on the top half, the backlog on the bottom. Only ever for the person's own press or command: the
 // engine draws such an open at any width, and only if it comes before any await. A toast cannot hold a list: it shows three lines.
 async function showList($: any) {
   const opening = $.ui.open({ id: PANE, title: 'Todo', closeOnEscape: true })
+  await update($, detail, () => null)
   await update($, topTodo, () => 0)
   await update($, topBacklog, () => 0)
   await update($, rev, n => n + 1)
   await opening.catch(() => undefined)
+}
+
+// Opens the pane on one item's full request, which is kept whole in the list file: nothing here calls a model.
+async function showDetail($: any, list: 'TODO' | 'BACKLOG', n: number) {
+  const opening = $.ui.open({ id: PANE, title: 'Todo', closeOnEscape: true })
+  await update($, detail, () => ({ list, n }))
+  await update($, topDetail, () => 0)
+  await update($, rev, k => k + 1)
+  await opening.catch(() => undefined)
+}
+
+// A text in lines of at most `width` characters, broken at spaces and where the text itself breaks; a word longer than a line is cut.
+function wrapText(text: string, width: number): string[] {
+  const lines: string[] = []
+
+  for (const para of text.split(/\r?\n/)) {
+    let line = ''
+
+    for (let word of para.split(/\s+/).filter(Boolean)) {
+      for (; word.length > width; word = word.slice(width)) {
+        if (line !== '') {
+          lines.push(line)
+          line = ''
+        }
+
+        lines.push(word.slice(0, width))
+      }
+
+      if (line === '') {
+        line = word
+      } else if (line.length + 1 + word.length <= width) {
+        line += ` ${word}`
+      } else {
+        lines.push(line)
+        line = word
+      }
+    }
+
+    lines.push(line)
+  }
+
+  return lines
 }
 
 // After a compaction or a clear of the main conversation: nothing is held any more, and what is on the todo list is shown and
@@ -205,26 +251,26 @@ async function writeList($: any, path: string, items: readonly Item[]) {
   }
 }
 
-// One line that says what a request asks, with what should not be repeated left out; the first line of the request when no model answers.
+// One line that says what a request asks, with what should not be repeated left out. With the account out of usage no model can write
+// it, so it is the request's first 60 characters; a short request is kept as typed; the model's line is kept whole.
 async function summarize($: any, text: string) {
-  if (text.length <= SUMMARY && !text.includes('\n')) {
-    return text.trim()
-  }
-
-  // With the account out of usage the summary is the request's first line; a model call would only fail.
   if ((await read($, usage)) >= OUT) {
     return summaryOf(text)
+  }
+
+  if (text.length <= 100 && !text.includes('\n')) {
+    return scrub(text.trim())
   }
 
   const answer = await $.model
     .complete({
       model: 'haiku',
       maxTokens: 60,
-      prompt: `Rewrite this request as one line of at most ${SUMMARY} characters that keeps what is asked for, ending on a whole word. Leave out names of people, secrets, file contents and pasted data. Answer with the line alone.\n\n${text}`,
+      prompt: `Rewrite this request as one line of at most 15 words that keeps what is asked for. Leave out names of people, secrets, file contents and pasted data. Answer with the line alone.\n\n${text}`,
     })
     .catch(() => undefined)
 
-  return answer?.isAnswered ? summaryOf(answer.text) || summaryOf(text) : summaryOf(text)
+  return (answer?.isAnswered ? scrub(oneLine(answer.text)) : '') || summaryOf(text)
 }
 
 async function addTodo($: any, text: string) {
@@ -376,6 +422,7 @@ const USAGE = `Pocketbook commands:
   setup               pick the limits from your own history
   setup -units [tokens|%]  switch the footer between tokens and percent
   mode::<name>        off, lite, auto or ultra
+  details -todo|-backlog <n>  show the whole request of an item
   todo                show the todo list
   todo -add <text>    add to it
   todo -remove <n>    remove item n
@@ -411,6 +458,25 @@ async function run($: any, args: string): Promise<string> {
 
   if (word === 'setup') {
     return setup($, rest)
+  }
+
+  if (word === 'details') {
+    const list = restWords[0] === '-todo' ? 'TODO' : restWords[0] === '-backlog' ? 'BACKLOG' : undefined
+
+    if (list === undefined) {
+      return 'Say which list: details -todo <n> or details -backlog <n>.'
+    }
+
+    const kept = await readList($, list === 'TODO' ? TODO : BACKLOG)
+    const at = pick(kept, restWords[1] ?? '')
+
+    if (at === undefined) {
+      return kept.length === 0 ? `The ${list.toLowerCase()} list is empty.` : `Give the number of an item, 1 to ${kept.length}.`
+    }
+
+    await showDetail($, list, at + 1)
+
+    return ''
   }
 
   if (word === 'backlog') {
@@ -499,7 +565,7 @@ async function loadConf($: any) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
-    await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | mode::<name> | todo | todo -add <text> | todo -remove <n> | stash <n> | archive | backlog]' })
+    await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | mode::<name> | todo | todo -add <text> | todo -remove <n> | stash <n> | archive | backlog | details -todo|-backlog <n>]' })
     await loadConf($)
     await update($, isTurn, () => false)
     // Pocketbook compacts by its own limits, so Claude Code's own automatic compaction is turned off; a refusal (a managed setting) is left be.
@@ -654,14 +720,66 @@ export const register: Register = on => {
   // The list pane: the todo list on the top half, the backlog on the bottom, each with its own title, arrows and page. A title sits
   // between rules that fill the width, then each summary from the left with its number at the right edge, on the item's first line; a
   // long summary wraps under itself. It follows the pane's width, so it needs no padding. A pane drawn inline has about a third of the
-  // terminal's height and does not scroll, so a half that is too long is paged with its arrows. The engine draws the close mark.
+  // terminal's height and does not scroll, so what is too long is paged with arrows. The engine draws the close mark. After
+  // `details`, the pane holds one item's whole request instead, under the title "TODO #n" or "BACKLOG #n".
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     await read($, rev)
     // The pane says how many rows and columns its body has, docked or inline; the fallbacks are an inline pane of a third of the screen.
     const props = e.props as { scroll?: { bodyRows?: number }; bodyColumns?: number } | undefined
-    const half = Math.max(2, Math.floor(((props?.scroll?.bodyRows ?? Math.floor((e.viewport?.rows ?? 24) / 3) - 2) - 2) / 2)) // item lines per half
+    const bodyRows = props?.scroll?.bodyRows ?? Math.floor((e.viewport?.rows ?? 24) / 3) - 2
     const wide = Math.max(20, (props?.bodyColumns ?? e.viewport?.columns ?? 80) - 5) // the width of a summary, after the number
+
+    const rule = (title: string, tail: unknown) => (
+      <Box key={`rule:${title}`}>
+        <Box width={0} flexGrow={1} height={1} overflow="hidden">
+          <Text dimColor>{'-'.repeat(300)}</Text>
+        </Box>
+        <Text bold>{` ${title} `}</Text>
+        <Box width={0} flexGrow={1} height={1} overflow="hidden">
+          <Text dimColor>{'-'.repeat(300)}</Text>
+        </Box>
+        {tail}
+      </Box>
+    )
+
+    const one = await read($, detail)
+
+    if (one !== null) {
+      const items = await readList($, one.list === 'TODO' ? TODO : BACKLOG)
+      const lines = items[one.n - 1] === undefined ? ['That item is no longer on the list.'] : wrapText(items[one.n - 1]!.full, wide + 5)
+      const room = Math.max(3, bodyRows - 1)
+      const start = Math.min(await read($, topDetail), Math.max(0, lines.length - 1))
+      const end = Math.min(lines.length, start + room)
+
+      return (
+        <Box flexDirection="column">
+          {rule(
+            `${one.list} #${one.n}`,
+            <Box>
+              {start > 0 && (
+                <Button key="up" plain onPress={() => void update($, topDetail, () => Math.max(0, start - room))}>
+                  <Text dimColor> [▲]</Text>
+                </Button>
+              )}
+              {end < lines.length && (
+                <Button key="down" plain onPress={() => void update($, topDetail, () => end)}>
+                  <Text dimColor> [▼]</Text>
+                </Button>
+              )}
+              <Button key="back" plain onPress={() => void showList($)}>
+                <Text dimColor> [back]</Text>
+              </Button>
+            </Box>,
+          )}
+          {lines.slice(start, end).map((line, i) => (
+            <Text key={`${start + i}`}>{line === '' ? ' ' : line}</Text>
+          ))}
+        </Box>
+      )
+    }
+
+    const half = Math.max(2, Math.floor((bodyRows - 2) / 2)) // item lines per half
 
     const part = async (title: 'TODO' | 'BACKLOG', path: string) => {
       const items = await readList($, path)
@@ -679,25 +797,21 @@ export const register: Register = on => {
 
       return (
         <Box key={title} flexDirection="column">
-          <Box>
-            <Box width={0} flexGrow={1} height={1} overflow="hidden">
-              <Text dimColor>{'-'.repeat(300)}</Text>
-            </Box>
-            <Text bold>{` ${title} `}</Text>
-            <Box width={0} flexGrow={1} height={1} overflow="hidden">
-              <Text dimColor>{'-'.repeat(300)}</Text>
-            </Box>
-            {start > 0 && (
-              <Button key={`up:${title}`} plain onPress={() => go(Math.max(0, start - Math.max(1, end - start)))}>
-                <Text dimColor> [▲]</Text>
-              </Button>
-            )}
-            {end < items.length && (
-              <Button key={`down:${title}`} plain onPress={() => go(end)}>
-                <Text dimColor> [▼]</Text>
-              </Button>
-            )}
-          </Box>
+          {rule(
+            title,
+            <Box>
+              {start > 0 && (
+                <Button key={`up:${title}`} plain onPress={() => go(Math.max(0, start - Math.max(1, end - start)))}>
+                  <Text dimColor> [▲]</Text>
+                </Button>
+              )}
+              {end < items.length && (
+                <Button key={`down:${title}`} plain onPress={() => go(end)}>
+                  <Text dimColor> [▼]</Text>
+                </Button>
+              )}
+            </Box>,
+          )}
           {items.length === 0 && <Text dimColor>The list is empty.</Text>}
           {items.slice(start, end).map((item, i) => (
             <Box key={`${start + i}:${item.summary}`} gap={1}>
@@ -764,8 +878,8 @@ export const register: Register = on => {
         <Button key="mode" plain onPress={() => update($, isModesOpen, () => true)}>
           <Text color={color}>●</Text> <Text>{current}</Text>
         </Button>
-        <Button key="details" plain onPress={() => void showList($)}>
-          <Text dimColor>details</Text>
+        <Button key="show" plain onPress={() => void showList($)}>
+          <Text dimColor>show</Text>
         </Button>
       </Box>
     )
