@@ -946,7 +946,7 @@ export const register: Register = on => {
         <Box gap={1}>
           {await next(e)}
           {MODES.map(one => (
-            <Button key={`mode:${one}`} plain onPress={() => void changeMode($, one).then(text => say($, text))}>
+            <Button key={`mode:${one}`} plain onPress={() => void changeMode($, one).then(async text => (await update($, isModesOpen, () => false), say($, text)))}>
               {one === current ? <Text color={modeColor(one, name as 'high' | 'medium' | 'low')}>{`[ ${one} ]`}</Text> : <Text dimColor>{one}</Text>}
             </Button>
           ))}
