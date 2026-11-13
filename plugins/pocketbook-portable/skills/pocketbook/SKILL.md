@@ -21,6 +21,7 @@ The project's todo list is `.pocketbook/todo.md` and its backlog `.pocketbook/ba
 | empty the backlog | `node SCRIPT backlog -remove -all` |
 | move backlog item n back to the todo list | `node SCRIPT unstash <n>` |
 | move the whole backlog back | `node SCRIPT unstash -all` |
+| rewrite an item (t for todo, b for backlog) | `node SCRIPT edit t<n> <new text>` |
 | read the whole request of an item | `node SCRIPT details -todo <n>` or `details -backlog <n>` |
 
 The user can also type `pb todo`, `pb todo -add <text>`, `pb todo -remove <n>`, `pb stash <n>`, `pb stash -all`, `pb backlog`, `pb unstash <n>`, `pb unstash -all` or `pb details -todo <n>` as a prompt. A hook answers those itself, so they reach you only if hooks are off; if one does, run the same command and show the answer.

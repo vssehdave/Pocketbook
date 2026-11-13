@@ -102,3 +102,16 @@ test('the backlog is emptied, restored from and read in full', () => {
   assert.equal(run(cwd, 'details -todo 1'), 'Use: details -todo <n> or details -backlog <n>.')
   assert.equal(hook(cwd, 'prompt', 'codex', { prompt: 'pb unstash -all' }, 'p.mjs').reason, 'Moved 1 to the todo list.\nThe todo list:\none [1]')
 })
+
+test('an item is rewritten by edit, t for the todo list and b for the backlog', () => {
+  const cwd = dir()
+  run(cwd, 'todo -add first')
+  run(cwd, 'todo -add second')
+  run(cwd, 'stash 2')
+  assert.equal(run(cwd, 'edit t1'), 'TODO #1' + String.fromCharCode(10) + 'first' + String.fromCharCode(10) + 'Type: edit t1 <new text>')
+  assert.equal(run(cwd, 'edit t1 first, reworded'), 'Edited.')
+  assert.equal(run(cwd, 'edit b1 second, reworded'), 'Edited.')
+  assert.equal(run(cwd, 'todo'), 'first, reworded [1]')
+  assert.equal(run(cwd, 'backlog'), 'second, reworded [1]')
+  assert.match(run(cwd, 'edit 1'), /^Say which item/)
+})

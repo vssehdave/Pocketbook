@@ -1,6 +1,6 @@
 {
   "name": "pocketbook",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "A todo list and backlog for long conversations, kept in .pocketbook/.",
   "author": { "name": "Veertej Sehdave", "url": "https://github.com/vssehdave" },
   "homepage": "https://github.com/vssehdave/Pocketbook",

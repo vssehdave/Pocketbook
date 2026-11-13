@@ -3,7 +3,7 @@
 // working. No dependencies. The lists are the same markdown files the Claude Code plugin writes, in .pocketbook/ of the project.
 //
 //   node pocketbook.mjs todo | todo -add <text> | todo -remove <n> | stash <n> | stash -all | backlog | backlog -remove <n>
-//                        unstash <n> | unstash -all | details -todo <n> | details -backlog <n>
+//                        unstash <n> | unstash -all | edit t<n>|b<n> <text> | details -todo <n> | details -backlog <n>
 //   node pocketbook.mjs hook <prompt|stop> <codex|gemini|copilot>     (reads the agent's hook JSON on stdin)
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -88,6 +88,7 @@ export const USAGE = `Pocketbook commands:
   backlog -remove -all  remove every item from the backlog
   unstash <n>         move backlog item n back to the todo list
   unstash -all        move the whole backlog back to the todo list
+  edit t<n>|b<n> <text>  rewrite a todo or backlog item
   details -todo <n>   show the whole request of todo item n (-backlog <n> for the backlog)`
 
 // What the command answers for the words typed after it.
@@ -97,6 +98,29 @@ export function run(cwd, args) {
   const items = list(cwd, 'todo.md')
 
   const stored = list(cwd, 'backlog.md')
+
+  if (word === 'edit') {
+    const typed = /^([tb])(\d+)\s*([\s\S]*)$/i.exec(rest)
+    const from = typed === null ? undefined : typed[1].toLowerCase() === 't' ? items : stored
+    const at = typed === null ? undefined : pick(from, typed[2])
+
+    if (at === undefined) {
+      return 'Say which item: edit t<n> for the todo list or edit b<n> for the backlog, then the new text.'
+    }
+
+    const text = typed[3].trim()
+    const letter = typed[1].toLowerCase()
+
+    if (text === '') {
+      return `${letter === 't' ? 'TODO' : 'BACKLOG'} #${at + 1}
+${from[at].full}
+Type: edit ${letter}${at + 1} <new text>`
+    }
+
+    save(cwd, letter === 't' ? 'todo.md' : 'backlog.md', from.map((item, i) => (i === at ? { summary: summaryOf(text), full: text } : item)))
+
+    return 'Edited.'
+  }
 
   if (word === 'backlog' && rest === '') {
     return listing(stored) || 'The backlog is empty.'
@@ -207,7 +231,7 @@ export function run(cwd, args) {
 
 // "pb todo -add fix the footer" is a Pocketbook command typed as a prompt. The word after pb has to be a command, so a prompt that
 // merely starts with "pb" goes through untouched.
-const TYPED = /^\s*pb\s+((?:todo|stash|backlog|unstash|details)\b[\s\S]*)$/i
+const TYPED = /^\s*pb\s+((?:todo|stash|backlog|unstash|details|edit)\b[\s\S]*)$/i
 
 // Each agent words "block this" and "add this context" its own way.
 const block = (agent, text) => ({ decision: agent === 'gemini' ? 'deny' : 'block', reason: text, systemMessage: text })

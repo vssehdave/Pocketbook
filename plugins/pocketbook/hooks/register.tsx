@@ -491,6 +491,7 @@ const USAGE = `Pocketbook commands:
   setup -units [tokens|%]  switch the footer between tokens and percent
   mode::<name>        off, lite, auto or ultra
   details -todo|-backlog <n>  show the whole request of an item
+  edit t<n>|b<n> [text]  change an item: with no text its request goes in the prompt box to edit
   todo                show the todo list
   todo -add <text>    add to it
   todo -remove <n>    remove item n
@@ -551,6 +552,40 @@ async function run($: any, args: string): Promise<string> {
     await showDetail($, list, at + 1)
 
     return ''
+  }
+
+  // edit t2 or edit b3: with no text the item's whole request is put in the prompt box as a draft to change and send back; with text
+  // the item is rewritten. The first letter says the list, t for todo and b for backlog.
+  if (word === 'edit') {
+    const typed = /^([tb])(\d+)\s*([\s\S]*)$/i.exec(rest)
+
+    if (typed === null) {
+      return 'Say which item: edit t<n> for the todo list or edit b<n> for the backlog, then the new text.'
+    }
+
+    const letter = typed[1]!.toLowerCase()
+    const list = letter === 't' ? 'TODO' : 'BACKLOG'
+    const path = list === 'TODO' ? TODO : BACKLOG
+    const kept = await readList($, path)
+    const at = pick(kept, typed[2]!)
+
+    if (at === undefined) {
+      return kept.length === 0 ? `The ${list.toLowerCase()} list is empty.` : `Give the number of an item, 1 to ${kept.length}.`
+    }
+
+    const text = typed[3]!.trim()
+
+    if (text === '') {
+      const filled = await $.prompt.fill({ text: `/pocketbook edit ${letter}${typed[2]} ${kept[at]!.full}` }).catch(() => undefined)
+
+      return filled?.isFilled ? '' : `The prompt box is not available here. Type /pocketbook edit ${letter}${typed[2]} and then the new text.`
+    }
+
+    const edited = { summary: await summarize($, text), full: text }
+    await writeList($, path, kept.map((item, i) => (i === at ? edited : item)))
+    await showList($, list)
+
+    return 'Edited.'
   }
 
   if (word === 'todo' || word === 'backlog') {
@@ -704,7 +739,7 @@ async function loadConf($: any) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
-    await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | mode::<name> | todo | todo -add <text> | todo -remove <n> | stash <n> | stash -all | backlog | backlog -add <text> | backlog -remove <n> | unstash <n> | unstash -all | work [n] | details -todo|-backlog <n>]' })
+    await $.command.register({ name: 'pocketbook', description: 'Context limits, modes, and the todo list', argumentHint: '[setup | mode::<name> | todo | todo -add <text> | todo -remove <n> | stash <n> | stash -all | backlog | backlog -add <text> | backlog -remove <n> | unstash <n> | unstash -all | work [n] | edit t<n>|b<n> [text] | details -todo|-backlog <n>]' })
     await loadConf($)
     await update($, isTurn, () => false)
     // Lists already there are put under .gitignore now, not only when next written; a filesystem that will not say is left be.
