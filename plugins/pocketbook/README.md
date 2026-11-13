@@ -30,7 +30,7 @@ Pocketbook turns Claude Code's own automatic compaction off, in every mode, so i
 | --- | --- |
 | `/pocketbook setup` | pick the limits from your history |
 | `/pocketbook setup -units [tokens\|%]` | switch the footer between tokens and percent used (no word toggles) |
-| `/pocketbook mode::<name>` | `off`, `lite`, `auto` or `ultra` |
+| `/pocketbook mode::<name>` | `off`, `lite`, `auto` or `ultra`. It answers with where that mode notes and compacts; picking `off` instead says how many compactions Pocketbook has made so far and how many tokens they shrank the context by in total (the context before each, less after it). The footer's mode buttons give the same answer as a toast. |
 | `/pocketbook todo` | show the todo list, each item with its number |
 | `/pocketbook todo -add <text>` | add an item |
 | `/pocketbook todo -remove <n>` | remove item n |

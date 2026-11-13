@@ -71,3 +71,24 @@ export const rule = (tokens: number, limit: number, todo: string) => {
 
   return `Pocketbook: this conversation holds about ${K(tokens)} tokens of a ${K(limit)} limit, so about ${K(room)} are left. Start nothing you expect to need more than a third of that: about ${K(room / 3)} tokens of reading, tool output and writing. A small or medium request: do it. A request that needs more: do not start it. Append it to ${todo} as an item (a line "- <one-line summary>", then the full request on lines indented by two spaces), tell the user it is on the todo list and will be picked up once the conversation is compacted, and stop. When you finish something that is on that list, delete its item from the file.`
 }
+
+// One mode's limits as a line: its name, then where it notes and where it compacts.
+export const modeLine = (name: Mode, c: Conf) => {
+  const [soft, hard] = name === 'ultra' ? [c.ultraSoft, c.ultraHard] : [c.soft, c.hard]
+
+  return `${name.padEnd(7)}notes at ${K(soft)}, ${name === 'lite' ? 'never compacts' : `compacts at ${K(hard)}`}`
+}
+
+// What Pocketbook's own compactions have spared so far: how many, and the tokens the context shrank by in total.
+export type History = { count: number; saved: number }
+
+// The answer to a mode change. Off says what compacting has saved so far; any other mode says where it notes and compacts.
+export const modeReport = (name: Mode, wasOff: boolean, c: Conf | null, h: History) =>
+  name === 'off'
+    ? [
+        'Pocketbook is off.',
+        h.count === 0
+          ? 'No compactions yet, so nothing has been saved.'
+          : `Compacted ${h.count} time${h.count === 1 ? '' : 's'} so far, shrinking the context by ${K(h.saved)} tokens in total.`,
+      ].join('\n')
+    : [`Pocketbook is ${wasOff ? 'back on' : 'on'} at ${name} mode.`, ...(c === null ? [] : [modeLine(name, c)])].join('\n')

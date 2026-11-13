@@ -55,7 +55,7 @@ export type Row = { limit: number; saved: number; reached: number }
 
 // What a conversation is taken to hold right after a compaction: the summary and the fixed prompt. shortcut: a constant, measure it
 // from the transcripts' own compactions if the table needs to be closer.
-const COMPACTED = 30_000
+export const COMPACTED = 30_000
 
 // For each soft limit from 150K up in 50K steps, under the ceiling: `saved` is the share of all tokens read that compacting at that
 // limit would have spared, and `reached` the share of conversations that got there. Both whole percentages. A request past the limit

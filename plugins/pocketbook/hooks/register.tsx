@@ -2,8 +2,9 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Conf, Meter, Mode, Units } from '../types'
-import { K, MODES, band, ceilingOf, defaults, isMode, leftOf, limitsOf, modeColor, rule, softNote, usedText } from './lib'
-import { PATTERN, confFor, hardLimit, sizesOf, suggested, table, tokensIn } from './analysis'
+import { K, MODES, band, ceilingOf, defaults, isMode, leftOf, limitsOf, modeColor, modeLine, modeReport, rule, softNote, usedText } from './lib'
+import type { History } from './lib'
+import { COMPACTED, PATTERN, confFor, hardLimit, sizesOf, suggested, table, tokensIn } from './analysis'
 import { BACKLOG, SUMMARY, TODO, TOAST_WIDTH, listing, parse, pick, serialize, summaryOf, toastText } from './todo'
 import type { Item } from './todo'
 
@@ -111,6 +112,7 @@ async function afterCompact($: any) {
 // a quarter second after the main conversation's turn has completed, or before a prompt typed while idle enters. The engine itself
 // rejects the call while a turn runs, so a reply is never compacted under way.
 async function compactNow($: any) {
+  const before = (await read($, meter))?.tokens ?? 0
   const done = await $.session.compact({ instructions: `Open work is listed in ${TODO}; say that it is there.` }).catch(() => undefined)
 
   if (done === undefined || done.skip !== undefined) {
@@ -118,8 +120,29 @@ async function compactNow($: any) {
   }
 
   await afterCompact($) // the engine does not run this mod's own session.compact hook for a compaction it asked for itself
+  await record($, before)
 
   return true
+}
+
+// What Pocketbook's own compactions have spared, kept across sessions: the context before one less the context after it, which is
+// the usual compacted size until the engine has measured the new one.
+async function record($: any, before: number) {
+  const after = (await read($, meter))?.tokens ?? COMPACTED
+  const kept = await savings($)
+  await $.store.set('history', { count: kept.count + 1, saved: kept.saved + Math.max(0, before - after) })
+}
+
+async function savings($: any): Promise<History> {
+  return ((await $.store.get('history')) as History | undefined) ?? { count: 0, saved: 0 }
+}
+
+// The answer to a mode change, which a command prints and the footer's buttons toast.
+async function changeMode($: any, picked: Mode) {
+  const wasOff = (await read($, mode)) === 'off'
+  await setMode($, picked)
+
+  return modeReport(picked, wasOff, await read($, conf), await savings($))
 }
 
 // The reply that passed the hard limit has ended. With background work running the conversation is held as it is; with none it is
@@ -341,9 +364,7 @@ async function setup($: any, typed: string): Promise<string> {
     passed === 0
       ? `No conversation passed ${K(picked.soft)}, so the hard limit is 50K over it.`
       : `${passed} conversations passed ${K(picked.soft)}; 80% of them peaked at or under ${K(picked.hard)}.`,
-    `  lite   notes at ${K(picked.soft)}, never compacts`,
-    `  auto   notes at ${K(picked.soft)}, compacts at ${K(picked.hard)}`,
-    `  ultra  notes at ${K(picked.ultraSoft)}, compacts at ${K(picked.ultraHard)}`,
+    ...(['lite', 'auto', 'ultra'] as const).map(one => `  ${modeLine(one, picked)}`),
     `The todo list is ${TODO}, the backlog ${BACKLOG}.`,
   ].join('\n')
 }
@@ -372,9 +393,7 @@ async function run($: any, args: string): Promise<string> {
       return `The mode is ${await read($, mode)}. Pick one of: ${MODES.join(', ')}.`
     }
 
-    await setMode($, picked)
-
-    return `The mode is now ${picked}.`
+    return changeMode($, picked)
   }
 
   if (word === 'setup' && restWords[0] === '-units') {
@@ -652,7 +671,7 @@ export const register: Register = on => {
         <Box gap={1}>
           {await next(e)}
           {MODES.map(one => (
-            <Button key={`mode:${one}`} plain onPress={() => setMode($, one)}>
+            <Button key={`mode:${one}`} plain onPress={() => void changeMode($, one).then(text => $.ui.toast(text, { timeoutMs: 10_000 }))}>
               {one === current ? <Text color={modeColor(one, name as 'high' | 'medium' | 'low')}>{`[ ${one} ]`}</Text> : <Text dimColor>{one}</Text>}
             </Button>
           ))}
