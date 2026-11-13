@@ -13,6 +13,6 @@ export type Units = 'tokens' | 'percent'
 
 declare module 'claude-code' {
   interface PluginState {
-    pocketbook: { meter: Meter; conf: Conf | null; mode: Mode; units: Units; isModesOpen: boolean; shells: readonly string[]; isHeld: boolean; isTurn: boolean; added: boolean; usage: number; warned: readonly string[] }
+    pocketbook: { meter: Meter; conf: Conf | null; mode: Mode; units: Units; isModesOpen: boolean; shells: readonly string[]; isHeld: boolean; isTurn: boolean; added: boolean; usage: number; warned: readonly string[]; shownList: 'TODO' | 'BACKLOG'; rev: number; top: number }
   }
 }

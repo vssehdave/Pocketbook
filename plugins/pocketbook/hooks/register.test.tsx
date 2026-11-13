@@ -163,23 +163,54 @@ test('the first session works the limits out from the compaction window and keep
   expect(kept.conf).toEqual(CONF)
 })
 
-test('the details button shows the todo list as a one-minute toast', async ($, on) => {
-  const toasts: Array<{ text: string; timeoutMs?: number }> = []
-  const files: Record<string, string> = { '.pocketbook/todo.md': '# Pocketbook todo\n\n- Fix the typo\n' }
-  on('state.get', stored({ meter: { tokens: 60_000 }, conf: CONF }))
+test('the details button opens the list pane, which shows each item with its number', async ($, on) => {
+  const opens: Array<{ id: string; title: string; closeOnEscape?: true }> = []
+  const files: Record<string, string> = { '.pocketbook/todo.md': '# Pocketbook todo\n\n- Fix the typo\n- Write the notes\n' }
   const at = (path: string) => Object.keys(files).find(key => path.replaceAll(String.fromCharCode(92), '/').endsWith(key)) ?? ''
-  on('fs.exists', (_, e) => ({ value: at(e.path) !== '' }))
-  on('fs.read', (_, e) => ({ value: files[at(e.path)] }))
-  on('ui.toast', (_, e) => {
-    toasts.push(e)
+  const kept: Record<string, unknown> = { conf: CONF }
+  on('store.get', (_, e) => ({ value: kept[e.key] }))
+  on('store.set', (_, e) => {
+    kept[e.key] = e.value
 
     return { value: undefined }
   })
-  const ui = await $.ui.mount(SLOT)
+  on('session.usage', () => ({ value: { startedAt: 0, rateLimits: [], context: { window: 1_000_000, tokens: 60_000 } } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', () => ({ value: { command: 'pocketbook' } }))
+  on('fs.exists', (_, e) => ({ value: at(e.path) !== '' }))
+  on('fs.read', (_, e) => ({ value: files[at(e.path)] }))
+  on('ui.open', (_, e) => {
+    opens.push(e)
 
-  await ui.press({ key: 'details' })
-  expect(toasts).toHaveLength(1)
-  expect(toasts[0]!.timeoutMs).toBe(60_000)
-  expect(toasts[0]!.text.split('\n')).toEqual([`${'-'.repeat(17)} TODO ${'-'.repeat(17)}`, `Fix the typo${' '.repeat(25)}[1]`])
-  await ui.unmount()
+    return { value: { isPlaced: true } }
+  })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const footer = await $.ui.mount(SLOT)
+
+  await footer.press({ key: 'details' })
+  expect(opens).toEqual([{ id: 'pocketbook-list', title: 'Todo', closeOnEscape: true }])
+  await footer.unmount()
+
+  const pane = await $.ui.mount({ plugin: 'pocketbook', component: 'Pane', requestId: 'pocketbook-list', surface: 'terminal', props: {} })
+
+  expect((await pane.find({ type: 'Text', text: /TODO/ }))?.text).toBe(' TODO ')
+  expect((await pane.find({ type: 'Text', text: /typo/ }))?.text).toBe('Fix the typo')
+  expect((await pane.find({ type: 'Text', text: /2/ }))?.text).toBe('[2]')
+  await pane.unmount()
+})
+
+test('a list longer than the pane has room for is paged, with its range in the title', async ($, on) => {
+  const many = Array.from({ length: 14 }, (_, i) => `- item ${i + 1}`).join(String.fromCharCode(10))
+  const files: Record<string, string> = { '.pocketbook/todo.md': `# Pocketbook todo${String.fromCharCode(10, 10)}${many}${String.fromCharCode(10)}` }
+  const at = (path: string) => Object.keys(files).find(key => path.replaceAll(String.fromCharCode(92), '/').endsWith(key)) ?? ''
+  on('fs.exists', (_, e) => ({ value: at(e.path) !== '' }))
+  on('fs.read', (_, e) => ({ value: files[at(e.path)] }))
+  const pane = await $.ui.mount({ plugin: 'pocketbook', component: 'Pane', requestId: 'pocketbook-list', surface: 'terminal', props: {} })
+
+  expect((await pane.find({ type: 'Text', text: /TODO/ }))?.text).toBe(' TODO 1-5 of 14 ')
+  expect(await pane.find({ type: 'Text', text: /item 6/ })).toBeUndefined()
+  expect(await pane.find({ type: 'Button', key: 'up' })).toBeUndefined() // nothing before the first page
+  await pane.press({ key: 'down' })
+  expect((await pane.find({ type: 'Text', text: /TODO/ }))?.text).toBe(' TODO 6-10 of 14 ')
+  await pane.unmount()
 })

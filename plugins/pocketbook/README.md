@@ -13,10 +13,10 @@ Pocketbook: keeps a Claude Code conversation inside context limits picked from y
   | `ultra` | note, 50K earlier | compacts, at a limit worked out for the earlier start |
 
 - **Soft limit.** Past it the status line says how much room is left, and Claude is told to start nothing needing more than a third of that room and to put larger requests on the todo list.
-- **Hard limit.** The reply that passes it is followed by a compaction. If a background shell or agent is still running, the conversation is held instead and compacted when that work ends. While held, a typed prompt is not answered: it is added to the todo list and the list opens as a toast. `stop`, anything starting with `force:`, and `/pocketbook`, `/compact` and `/clear` still go through. `force:` is the way out if a shell is wrongly counted as running.
-- **Todo list.** After a compaction or a `/clear`, the list opens as a toast and Claude works through it, deleting each item as it is done.
+- **Hard limit.** The reply that passes it is followed by a compaction. If a background shell or agent is still running, the conversation is held instead and compacted when that work ends. While held, a typed prompt is not answered: it is added to the todo list and the list opens in a pane. `stop`, anything starting with `force:`, and `/pocketbook`, `/compact` and `/clear` still go through. `force:` is the way out if a shell is wrongly counted as running.
+- **Todo list.** After a compaction or a `/clear`, the list opens in a pane and Claude works through it, deleting each item as it is done.
 
-- **When your usage runs out.** At 95% of a rate-limit window the todo list opens as a toast once, with a reminder that `/pocketbook todo -add` keeps working after the limit is hit: it is a local command, so it needs no model, and the summary becomes the request's first 60 characters. Add as many as you like, mid-reply or after the limit. A todo added while a reply is running is handed to Claude when that reply ends; if usage is out by then, it is carried by your next prompt instead.
+- **When your usage runs out.** At 95% of a rate-limit window the todo list opens in a pane once, with a reminder that `/pocketbook todo -add` keeps working after the limit is hit: it is a local command, so it needs no model, and the summary becomes the request's first 60 characters. Add as many as you like, mid-reply or after the limit. A todo added while a reply is running is handed to Claude when that reply ends; if usage is out by then, it is carried by your next prompt instead.
 
 Pocketbook turns Claude Code's own automatic compaction off, in every mode, so in `off` and `lite` nothing compacts unless you run `/compact`.
 
@@ -30,7 +30,7 @@ Pocketbook turns Claude Code's own automatic compaction off, in every mode, so i
 | --- | --- |
 | `/pocketbook setup` | pick the limits from your history |
 | `/pocketbook setup -units [tokens\|%]` | switch the footer between tokens and percent used (no word toggles) |
-| `/pocketbook mode::<name>` | `off`, `lite`, `auto` or `ultra`. It answers with where that mode notes and compacts; picking `off` instead says how many compactions Pocketbook has made so far and how many tokens they shrank the context by in total (the context before each, less after it). The footer's mode buttons give the same answer as a toast. |
+| `/pocketbook mode::<name>` | `off`, `lite`, `auto` or `ultra`. It answers with where that mode notes and compacts; picking `off` instead says how many compactions Pocketbook has made so far and how many tokens they shrank the context by in total (the context before each, less after it). The footer's mode buttons print the same answer in the transcript. |
 | `/pocketbook todo` | show the todo list, each item with its number |
 | `/pocketbook todo -add <text>` | add an item |
 | `/pocketbook todo -remove <n>` | remove item n |
@@ -38,7 +38,7 @@ Pocketbook turns Claude Code's own automatic compaction off, in every mode, so i
 | `/pocketbook archive` | move the whole todo list to the backlog |
 | `/pocketbook backlog` | show the backlog |
 
-The todo and backlog commands show the list as a toast, a box over the transcript's top right corner: the title between dashes, then each summary with its number ending at the right edge. It stays for a minute (the most the engine allows), the pointer over it holds it, and a click takes it off. The footer's `details` button opens the same toast as often as you like. A toast is plain text, so the layout is spaces at a fixed width of 40 columns, narrower on a narrow terminal. None of the commands calls the model. The lists are `.pocketbook/todo.md` and `.pocketbook/backlog.md` in the project, and `.pocketbook/` is added to `.gitignore` where there is a repository. Each item is a one-line summary with the full request under it.
+The todo and backlog commands open the list in a pane: the title between dashes that fill the width, then each summary from the left with its number at the right edge, on the item's first line, and a long summary wrapping under itself. The footer's `details` button opens the same pane as often as you like; `[x]` or Escape closes it, and it follows the list as you change it. A list longer than the pane has room for (about a third of the terminal's height when it sits above the prompt) is paged with `[▲]` and `[▼]`, and the title says which items are showing. A toast was tried first and cannot work: the engine shows at most three lines of one and turns every line break into a replacement character. None of the commands calls the model. The lists are `.pocketbook/todo.md` and `.pocketbook/backlog.md` in the project, and `.pocketbook/` is added to `.gitignore` where there is a repository. Each item is a one-line summary with the full request under it.
 
 ## Limits
 

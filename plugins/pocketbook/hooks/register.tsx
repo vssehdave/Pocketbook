@@ -5,7 +5,7 @@ import type { Conf, Meter, Mode, Units } from '../types'
 import { K, MODES, band, ceilingOf, defaults, isMode, leftOf, limitsOf, modeColor, modeLine, modeReport, rule, softNote, usedText } from './lib'
 import type { History } from './lib'
 import { COMPACTED, PATTERN, confFor, hardLimit, sizesOf, suggested, table, tokensIn } from './analysis'
-import { BACKLOG, SUMMARY, TODO, TOAST_WIDTH, listing, parse, pick, serialize, summaryOf, toastText } from './todo'
+import { BACKLOG, SUMMARY, TODO, listing, parse, pick, serialize, summaryOf } from './todo'
 import type { Item } from './todo'
 
 const meter = atom({ plugin: 'pocketbook', key: 'meter' } as const, null as Meter)
@@ -76,15 +76,31 @@ function say($: any, text: string) {
   }
 }
 
-// The terminal's width as last seen by the footer or a command, so a toast on a narrow window is narrower.
-// shortcut: a module variable, lost on a reload and 80 until the footer draws; fine, the next draw sets it.
-let columns = 80
-const TOAST_MS = 60_000 // the most the engine allows; the pointer over a toast holds it and a click takes it off
+const PANE = 'pocketbook-list'
+// Which list the pane shows, and a counter bumped when either changes so an open pane redraws.
+const shownList = atom({ plugin: 'pocketbook', key: 'shownList' } as const, 'TODO' as 'TODO' | 'BACKLOG')
+const rev = atom({ plugin: 'pocketbook', key: 'rev' } as const, 0)
+// The first item the pane shows, for a list longer than it has room for.
+const top = atom({ plugin: 'pocketbook', key: 'top' } as const, 0)
 
-// A list as a toast: the title between dashes, then each summary and its number. A toast is plain text, so the layout is spaces.
-async function showList($: any, title: string, path: string) {
-  const width = Math.min(TOAST_WIDTH, Math.max(20, columns - 8))
-  $.ui.toast(toastText(title, await readList($, path), width), { timeoutMs: TOAST_MS })
+// Opens the list in a pane, or redraws it when it is open. A toast shows three lines at most and no line break, so it cannot hold a
+// list. Resolves whether a surface drew it: a pane opened by the person's own press or command is drawn at any width.
+async function showList($: any, title: 'TODO' | 'BACKLOG'): Promise<boolean> {
+  // The open comes first, before any await: the engine takes it as the person's own only while the press or command is still running.
+  const opening = $.ui.open({ id: PANE, title: title === 'TODO' ? 'Todo' : 'Backlog', closeOnEscape: true })
+  await update($, shownList, () => title)
+  await update($, top, () => 0)
+  await update($, rev, n => n + 1)
+  const opened = await opening.catch(() => undefined)
+
+  return opened?.isPlaced === true
+}
+
+// The list opened by what Pocketbook itself noticed: on a narrow terminal the surface leaves such a pane undrawn, so say where it is.
+async function offerList($: any) {
+  if (!(await showList($, 'TODO'))) {
+    say($, 'The todo list is behind the details button in the footer.')
+  }
 }
 
 // After a compaction or a clear of the main conversation: nothing is held any more, and what is on the todo list is shown and
@@ -99,7 +115,7 @@ async function afterCompact($: any) {
     return
   }
 
-  await showList($, 'TODO', TODO)
+  await offerList($)
   // Not awaited: the prompt starts a turn of its own once the session is idle, which is after this hook has returned.
   void $.prompt
     .submit({
@@ -153,7 +169,7 @@ async function atHardLimit($: any) {
 
   if (await isBusy($)) {
     say($, HELD)
-    await showList($, 'TODO', TODO)
+    await offerList($)
   } else {
     $.clock.after(250, () => void compactNow($))
   }
@@ -239,7 +255,7 @@ async function handBack($: any) {
 
   if ((await read($, usage)) >= OUT) {
     say($, 'Usage is used up. What you add stays on the todo list and is picked up with your next prompt after it resets.')
-    await showList($, 'TODO', TODO)
+    await offerList($)
 
     return
   }
@@ -411,7 +427,7 @@ async function run($: any, args: string): Promise<string> {
   }
 
   if (word === 'backlog') {
-    await showList($, 'BACKLOG', BACKLOG)
+    await showList($, 'BACKLOG')
 
     return ''
   }
@@ -419,7 +435,7 @@ async function run($: any, args: string): Promise<string> {
   const items = await readList($, TODO)
 
   if (word === 'todo' && rest === '') {
-    await showList($, 'TODO', TODO)
+    await showList($, 'TODO')
 
     return ''
   }
@@ -433,7 +449,7 @@ async function run($: any, args: string): Promise<string> {
 
     await addTodo($, text)
 
-    await showList($, 'TODO', TODO)
+    await showList($, 'TODO')
 
     return 'Added.'
   }
@@ -454,7 +470,7 @@ async function run($: any, args: string): Promise<string> {
     const left = items.filter((_, i) => i !== at)
     await writeList($, TODO, left)
 
-    await showList($, 'TODO', TODO)
+    await showList($, 'TODO')
 
     return `${isRemove ? 'Removed' : 'Moved to the backlog'}: ${items[at]!.summary}`
   }
@@ -467,7 +483,7 @@ async function run($: any, args: string): Promise<string> {
     await writeList($, BACKLOG, [...(await readList($, BACKLOG)), ...items])
     await writeList($, TODO, [])
 
-    await showList($, 'TODO', TODO)
+    await showList($, 'TODO')
 
     return `Moved ${items.length} to the backlog.`
   }
@@ -529,7 +545,7 @@ export const register: Register = on => {
       await update($, warned, ids => [...ids, ...near.map(limit => `${limit.kind}:${limit.resetsAt}`)])
       const worst = near.reduce((a, b) => (b.percentUsed > a.percentUsed ? b : a))
       say($, `Usage is at ${Math.round(worst.percentUsed)}% of the ${worst.kind.replace('_', '-')} limit. /pocketbook todo -add keeps working when it runs out; what you add waits on the list.`)
-      await showList($, 'TODO', TODO)
+      await offerList($)
     }
 
     return result
@@ -547,7 +563,6 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'pocketbook' }, async ($, e) => {
-    columns = e.presentation?.columns || columns
     const text = await run($, e.args.trim())
 
     return text === '' ? {} : { text } // a list command answers with the toast alone
@@ -574,7 +589,7 @@ export const register: Register = on => {
           await addTodo($, e.text)
         }
 
-        await showList($, 'TODO', TODO)
+        await offerList($)
 
         return { drop: HELD }
       }
@@ -651,6 +666,68 @@ export const register: Register = on => {
     return result
   })
 
+  // The list pane: the title between rules that fill the width, then each summary from the left with its number at the right edge,
+  // on the item's first line; a long summary wraps under itself. It follows the pane's width, so it needs no padding. A pane drawn
+  // inline has about a third of the terminal's height and does not scroll, so a longer list is paged with the arrows in the header.
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const { Box, Button, Text } = $.ui.resolve(e)
+    await read($, rev)
+    const title = await read($, shownList)
+    const items = await readList($, title === 'TODO' ? TODO : BACKLOG)
+    const room = Math.max(2, Math.floor((e.viewport?.rows ?? 24) / 3) - 3) // lines under the header; a docked pane has more
+    const wide = Math.max(20, (e.viewport?.columns ?? 80) - 10)
+    const start = Math.min(await read($, top), Math.max(0, items.length - 1))
+    let end = start
+    let used = 0
+
+    while (end < items.length && (end === start || used + Math.ceil(items[end]!.summary.length / wide) <= room)) {
+      used += Math.max(1, Math.ceil(items[end]!.summary.length / wide))
+      end += 1
+    }
+
+    const isPaged = start > 0 || end < items.length
+    const rule = (
+      <Box width={0} flexGrow={1} height={1} overflow="hidden">
+        <Text dimColor>{'-'.repeat(300)}</Text>
+      </Box>
+    )
+
+    return (
+      <Box flexDirection="column">
+        <Box>
+          {rule}
+          <Text bold>{` ${title}${isPaged ? ` ${start + 1}-${end} of ${items.length}` : ''} `}</Text>
+          {rule}
+          {start > 0 && (
+            <Button key="up" plain onPress={() => void update($, top, () => Math.max(0, start - Math.max(1, end - start)))}>
+              <Text dimColor> [▲]</Text>
+            </Button>
+          )}
+          {end < items.length && (
+            <Button key="down" plain onPress={() => void update($, top, () => Math.min(items.length - 1, end))}>
+              <Text dimColor> [▼]</Text>
+            </Button>
+          )}
+          <Button key="close" plain onPress={() => void $.ui.close({ id: PANE })}>
+            <Text dimColor> [x]</Text>
+          </Button>
+        </Box>
+        {items.length === 0 ? (
+          <Text dimColor>The list is empty.</Text>
+        ) : (
+          items.slice(start, end).map((item, i) => (
+            <Box key={`${start + i}:${item.summary}`} gap={1}>
+              <Box flexGrow={1} flexShrink={1}>
+                <Text>{item.summary}</Text>
+              </Box>
+              <Text dimColor>{`[${start + i + 1}]`}</Text>
+            </Box>
+          ))
+        )}
+      </Box>
+    )
+  })
+
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     const m = await read($, meter)
     const limits = await read($, conf)
@@ -664,14 +741,13 @@ export const register: Register = on => {
     const { name, color } = band(leftOf(m?.tokens ?? 0, shown))
     const unit = (await read($, units)) === 'percent' ? 'percent' : 'tokens'
     const { Box, Button, Text } = $.ui.resolve(e)
-    columns = e.viewport?.columns || columns
 
     if (await read($, isModesOpen)) {
       return (
         <Box gap={1}>
           {await next(e)}
           {MODES.map(one => (
-            <Button key={`mode:${one}`} plain onPress={() => void changeMode($, one).then(text => $.ui.toast(text, { timeoutMs: 10_000 }))}>
+            <Button key={`mode:${one}`} plain onPress={() => void changeMode($, one).then(text => say($, text))}>
               {one === current ? <Text color={modeColor(one, name as 'high' | 'medium' | 'low')}>{`[ ${one} ]`}</Text> : <Text dimColor>{one}</Text>}
             </Button>
           ))}
@@ -697,7 +773,7 @@ export const register: Register = on => {
         <Button key="mode" plain onPress={() => update($, isModesOpen, () => true)}>
           <Text color={color}>●</Text> <Text>{current}</Text>
         </Button>
-        <Button key="details" plain onPress={() => void showList($, 'TODO', TODO)}>
+        <Button key="details" plain onPress={() => void showList($, 'TODO')}>
           <Text dimColor>details</Text>
         </Button>
       </Box>
