@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { listing, parse, pick, serialize, summaryOf } from './todo'
+import { handOver, listing, parse, pick, serialize, summaryOf } from './todo'
 
 const ITEMS = [
   { summary: 'Rewrite the importer', full: 'Rewrite the importer so it streams.\nKeep the old flags.' },
@@ -29,4 +29,12 @@ test('items are listed with their numbers, and a number names an item', () => {
   expect(listing(ITEMS)).toBe('Rewrite the importer [1]\nFix the typo [2]')
   expect(pick(ITEMS, '2')).toBe(1)
   expect([pick(ITEMS, '0'), pick(ITEMS, '3'), pick(ITEMS, 'two')]).toEqual([undefined, undefined, undefined])
+})
+
+test('the hand-over tells the model to read each full request in the file', () => {
+  const text = handOver('Start now.', ITEMS)
+
+  expect(text).toContain('one item at a time')
+  expect(text).toContain('full request is under it in the file')
+  expect(text.endsWith(listing(ITEMS))).toBe(true)
 })
