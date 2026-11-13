@@ -64,9 +64,15 @@ test('mode:: changes the mode and keeps it', async ($, on) => {
   const { kept } = world(on)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
-  expect(await pocketbook($, 'mode::ultra')).toBe('The mode is now ultra.')
-  expect(kept.mode).toBe('ultra')
-  expect(await pocketbook($, 'mode::loud')).toBe('The mode is ultra. Pick one of: off, lite, auto, ultra.')
+  const ultra = await pocketbook($, 'mode::ultra')
+  expect(ultra.split('\n')[0]).toBe('Pocketbook is on at ultra mode.')
+  expect(ultra.split('\n')[1]).toMatch(/^ultra {2}notes at \d+K, compacts at \d+K$/)
+  expect(await pocketbook($, 'mode::lite')).toMatch(/^Pocketbook is on at lite mode.\nlite {3}notes at \d+K, never compacts$/)
+  kept.history = { count: 2, saved: 640_000 }
+  expect(await pocketbook($, 'mode::off')).toBe('Pocketbook is off.\nCompacted 2 times so far, shrinking the context by 640K tokens in total.')
+  expect(await pocketbook($, 'mode::auto')).toMatch(/^Pocketbook is back on at auto mode.\nauto {3}notes at/)
+  expect(kept.mode).toBe('auto')
+  expect(await pocketbook($, 'mode::loud')).toBe('The mode is auto. Pick one of: off, lite, auto, ultra.')
 })
 
 test('setup -units toggles between tokens and percent, or sets one, and keeps it', async ($, on) => {

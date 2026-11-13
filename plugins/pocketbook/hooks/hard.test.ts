@@ -6,11 +6,18 @@ const TURN = { answer: '', durationMs: 1, isAborted: false, turnId: 't', reason:
 
 // A started session past the hard limit, the engine stood in for; `seen` records what the mod did to it.
 const session = async ($: any, on: any, mode: string) => {
-  const seen = { compactions: 0, prompts: [] as string[], logs: [] as string[], toasts: [] as string[], status: undefined as string | undefined, config: undefined as unknown }
+  const seen = { compactions: 0, prompts: [] as string[], logs: [] as string[], toasts: [] as string[], kept: {} as Record<string, unknown>, status: undefined as string | undefined, config: undefined as unknown }
   const files: Record<string, string> = {}
   const clock = mock.clock(on)
   let tokens: number | undefined = 310_000
-  mock.store(on, { conf: CONF, mode })
+  const kept: Record<string, unknown> = { conf: CONF, mode }
+  seen.kept = kept
+  on('store.get', (_: unknown, e: { key: string }) => ({ value: kept[e.key] }))
+  on('store.set', (_: unknown, e: { key: string; value: unknown }) => {
+    kept[e.key] = e.value
+
+    return { value: undefined }
+  })
   on('fs.exists', (_: unknown, e: { path: string }) => ({ value: e.path in files }))
   on('fs.read', (_: unknown, e: { path: string }) => ({ value: files[e.path] }))
   on('fs.write', (_: unknown, e: { path: string; text: string }) => {
@@ -76,6 +83,7 @@ test('with nothing in the background, the reply that passes the hard limit is fo
   expect(seen.compactions).toBe(1)
   expect(seen.status).toBeUndefined()
   expect(seen.prompts).toEqual([]) // an empty todo list starts nothing
+  expect(seen.kept.history).toEqual({ count: 1, saved: 280_000 }) // 310K before, the usual 30K after
 })
 
 test('lite never compacts', async ($, on) => {
