@@ -85,6 +85,7 @@ export const USAGE = `Pocketbook commands:
   archive             move the whole todo list to the backlog
   backlog             show the backlog
   backlog -remove <n> remove backlog item n
+  backlog -remove -all  remove every item from the backlog
   unstash <n>         move backlog item n back to the todo list
   restore             move the whole backlog back to the todo list
   details -todo <n>   show the whole request of todo item n (-backlog <n> for the backlog)`
@@ -99,6 +100,16 @@ export function run(cwd, args) {
 
   if (word === 'backlog' && rest === '') {
     return listing(stored) || 'The backlog is empty.'
+  }
+
+  if (word === 'backlog' && words[0] === '-remove' && words[1] === '-all') {
+    if (stored.length === 0) {
+      return 'The backlog is empty.'
+    }
+
+    save(cwd, 'backlog.md', [])
+
+    return `Removed all ${stored.length} from the backlog.`
   }
 
   if (word === 'backlog' && words[0] === '-remove') {

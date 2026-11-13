@@ -18,6 +18,7 @@ The project's todo list is `.pocketbook/todo.md` and its backlog `.pocketbook/ba
 | move the whole list to the backlog | `node SCRIPT archive` |
 | show the backlog | `node SCRIPT backlog` |
 | remove backlog item n | `node SCRIPT backlog -remove <n>` |
+| empty the backlog | `node SCRIPT backlog -remove -all` |
 | move backlog item n back to the todo list | `node SCRIPT unstash <n>` |
 | move the whole backlog back | `node SCRIPT restore` |
 | read the whole request of an item | `node SCRIPT details -todo <n>` or `details -backlog <n>` |

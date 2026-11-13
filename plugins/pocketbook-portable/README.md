@@ -15,6 +15,7 @@ Type these as a prompt:
 | `pb archive` | move the whole todo list to the backlog |
 | `pb backlog` | show the backlog |
 | `pb backlog -remove <n>` | remove backlog item n |
+| `pb backlog -remove -all` | empty the backlog |
 | `pb unstash <n>` | move backlog item n back to the todo list |
 | `pb restore` | move the whole backlog back to the todo list |
 | `pb details -todo <n>` or `-backlog <n>` | show the whole request of that item |
