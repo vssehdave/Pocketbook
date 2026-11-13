@@ -8,7 +8,7 @@ import { hook, run, summaryOf } from './pocketbook.mjs'
 
 const dir = () => mkdtempSync(join(tmpdir(), 'pb-'))
 
-test('the todo list is added to, stashed, removed from and archived', () => {
+test('the todo list is added to, stashed, removed from and moved whole', () => {
   const cwd = dir()
   mkdirSync(join(cwd, '.git'))
 
@@ -20,7 +20,7 @@ test('the todo list is added to, stashed, removed from and archived', () => {
   assert.equal(run(cwd, 'stash 2'), 'Moved to the backlog: second task\nThe todo list:\nfirst task [1]\nthird task [2]')
   assert.equal(run(cwd, 'todo -remove 1'), 'Removed: first task\nThe todo list:\nthird task [1]')
   assert.equal(run(cwd, 'todo -remove 5'), 'Give the number of an item, 1 to 1.')
-  assert.equal(run(cwd, 'archive'), 'Moved 1 to the backlog.\nThe todo list is empty.')
+  assert.equal(run(cwd, 'stash -all'), 'Moved 1 to the backlog.\nThe todo list is empty.')
   assert.equal(run(cwd, 'backlog'), 'second task [1]\nthird task [2]')
 })
 
@@ -85,20 +85,20 @@ test('the backlog is emptied, restored from and read in full', () => {
   const cwd = dir()
   run(cwd, 'todo -add one\nwith a second line')
   run(cwd, 'todo -add two')
-  run(cwd, 'archive')
+  run(cwd, 'stash -all')
   assert.equal(run(cwd, 'details -backlog 1'), 'BACKLOG #1\none\nwith a second line')
   assert.equal(run(cwd, 'unstash 2'), 'Moved to the todo list: two\nThe todo list:\ntwo [1]')
   assert.equal(run(cwd, 'details -todo 1'), 'TODO #1\ntwo')
-  assert.equal(run(cwd, 'restore'), 'Moved 1 to the todo list.\nThe todo list:\ntwo [1]\none [2]')
-  run(cwd, 'archive')
+  assert.equal(run(cwd, 'unstash -all'), 'Moved 1 to the todo list.\nThe todo list:\ntwo [1]\none [2]')
+  run(cwd, 'stash -all')
   assert.equal(run(cwd, 'backlog -remove 1'), 'Removed: two')
   assert.equal(run(cwd, 'backlog'), 'one [1]')
   run(cwd, 'todo -add three')
-  run(cwd, 'archive')
+  run(cwd, 'stash -all')
   assert.equal(run(cwd, 'backlog -remove -all'), 'Removed all 2 from the backlog.')
   assert.equal(run(cwd, 'backlog -remove -all'), 'The backlog is empty.')
   run(cwd, 'todo -add one')
-  run(cwd, 'archive')
+  run(cwd, 'stash -all')
   assert.equal(run(cwd, 'details -todo 1'), 'Use: details -todo <n> or details -backlog <n>.')
-  assert.equal(hook(cwd, 'prompt', 'codex', { prompt: 'pb restore' }, 'p.mjs').reason, 'Moved 1 to the todo list.\nThe todo list:\none [1]')
+  assert.equal(hook(cwd, 'prompt', 'codex', { prompt: 'pb unstash -all' }, 'p.mjs').reason, 'Moved 1 to the todo list.\nThe todo list:\none [1]')
 })

@@ -2,8 +2,8 @@
 // Pocketbook for agents without a plugin API of Claude Code's kind: the todo list and the backlog, and the hooks that keep them
 // working. No dependencies. The lists are the same markdown files the Claude Code plugin writes, in .pocketbook/ of the project.
 //
-//   node pocketbook.mjs todo | todo -add <text> | todo -remove <n> | stash <n> | archive | backlog | backlog -remove <n>
-//                        unstash <n> | restore | details -todo <n> | details -backlog <n>
+//   node pocketbook.mjs todo | todo -add <text> | todo -remove <n> | stash <n> | stash -all | backlog | backlog -remove <n>
+//                        unstash <n> | unstash -all | details -todo <n> | details -backlog <n>
 //   node pocketbook.mjs hook <prompt|stop> <codex|gemini|copilot>     (reads the agent's hook JSON on stdin)
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -82,12 +82,12 @@ export const USAGE = `Pocketbook commands:
   todo -add <text>    add to it
   todo -remove <n>    remove item n
   stash <n>           move item n to the backlog
-  archive             move the whole todo list to the backlog
+  stash -all          move the whole todo list to the backlog
   backlog             show the backlog
   backlog -remove <n> remove backlog item n
   backlog -remove -all  remove every item from the backlog
   unstash <n>         move backlog item n back to the todo list
-  restore             move the whole backlog back to the todo list
+  unstash -all        move the whole backlog back to the todo list
   details -todo <n>   show the whole request of todo item n (-backlog <n> for the backlog)`
 
 // What the command answers for the words typed after it.
@@ -124,7 +124,7 @@ export function run(cwd, args) {
     return `Removed: ${stored[at].summary}`
   }
 
-  if (word === 'unstash') {
+  if (word === 'unstash' && rest !== '-all') {
     const at = pick(stored, rest)
 
     if (at === undefined) {
@@ -137,7 +137,7 @@ export function run(cwd, args) {
     return `Moved to the todo list: ${stored[at].summary}\n${shown(list(cwd, 'todo.md'))}`
   }
 
-  if (word === 'restore') {
+  if (word === 'unstash' && rest === '-all') {
     if (stored.length === 0) {
       return 'The backlog is empty.'
     }
@@ -174,7 +174,7 @@ export function run(cwd, args) {
 
   const isRemove = word === 'todo' && words[0] === '-remove'
 
-  if (isRemove || word === 'stash') {
+  if (isRemove || (word === 'stash' && rest !== '-all')) {
     const at = pick(items, isRemove ? (words[1] ?? '') : rest)
 
     if (at === undefined) {
@@ -191,7 +191,7 @@ export function run(cwd, args) {
     return `${isRemove ? 'Removed' : 'Moved to the backlog'}: ${items[at].summary}\n${shown(left)}`
   }
 
-  if (word === 'archive') {
+  if (word === 'stash' && rest === '-all') {
     if (items.length === 0) {
       return 'The todo list is empty.'
     }
@@ -207,7 +207,7 @@ export function run(cwd, args) {
 
 // "pb todo -add fix the footer" is a Pocketbook command typed as a prompt. The word after pb has to be a command, so a prompt that
 // merely starts with "pb" goes through untouched.
-const TYPED = /^\s*pb\s+((?:todo|stash|archive|backlog|unstash|restore|details)\b[\s\S]*)$/i
+const TYPED = /^\s*pb\s+((?:todo|stash|backlog|unstash|details)\b[\s\S]*)$/i
 
 // Each agent words "block this" and "add this context" its own way.
 const block = (agent, text) => ({ decision: agent === 'gemini' ? 'deny' : 'block', reason: text, systemMessage: text })

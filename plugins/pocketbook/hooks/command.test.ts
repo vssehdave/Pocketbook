@@ -54,7 +54,7 @@ test('the todo and backlog commands change the lists and open the list pane', as
   expect(await pocketbook($, 'todo -remove 1')).toBe('Removed: first task')
   expect(todo()).toEqual(['third task'])
   expect(await pocketbook($, 'todo -remove 5')).toBe('Give the number of an item, 1 to 1.')
-  expect(await pocketbook($, 'archive')).toBe('Moved 1 to the backlog.')
+  expect(await pocketbook($, 'stash -all')).toBe('Moved 1 to the backlog.')
   expect(todo()).toEqual([])
   expect(await pocketbook($, 'backlog')).toBeUndefined()
   expect(opens.at(-1)?.id).toBe('pocketbook-list')
@@ -215,7 +215,7 @@ for (const [when, before, after] of IGNORE_CASES) {
 
 const summariesOf = (text: string | undefined) => (text ?? '').split('\n').filter(line => line.startsWith('- ')).map(line => line.slice(2))
 
-test('the backlog has the todo list commands, and unstash and restore bring items back', async ($, on) => {
+test('the backlog has the todo list commands, and unstash and unstash -all bring items back', async ($, on) => {
   const { files } = world(on)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const todo = () => summariesOf(files['.pocketbook/todo.md'])
@@ -230,11 +230,11 @@ test('the backlog has the todo list commands, and unstash and restore bring item
   expect(todo()).toEqual(['first parked'])
   expect(backlog()).toEqual(['second parked'])
   expect(await pocketbook($, 'stash 1')).toBe('Moved to the backlog: first parked')
-  expect(await pocketbook($, 'restore')).toBe('Moved 2 to the todo list.')
+  expect(await pocketbook($, 'unstash -all')).toBe('Moved 2 to the todo list.')
   expect(todo()).toEqual(['second parked', 'first parked'])
   expect(backlog()).toEqual([])
 
-  expect(await pocketbook($, 'restore')).toBe('The backlog list is empty.')
+  expect(await pocketbook($, 'unstash -all')).toBe('The backlog list is empty.')
   expect(await pocketbook($, 'unstash 1')).toBe('The backlog list is empty.')
   expect(await pocketbook($, 'backlog -remove 1')).toBe('The backlog list is empty.')
   await pocketbook($, 'backlog -add to delete')
