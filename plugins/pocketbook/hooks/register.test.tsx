@@ -167,8 +167,9 @@ test('the details button shows the todo list as a one-minute toast', async ($, o
   const toasts: Array<{ text: string; timeoutMs?: number }> = []
   const files: Record<string, string> = { '.pocketbook/todo.md': '# Pocketbook todo\n\n- Fix the typo\n' }
   on('state.get', stored({ meter: { tokens: 60_000 }, conf: CONF }))
-  on('fs.exists', (_, e) => ({ value: e.path in files }))
-  on('fs.read', (_, e) => ({ value: files[e.path] }))
+  const at = (path: string) => Object.keys(files).find(key => path.replaceAll(String.fromCharCode(92), '/').endsWith(key)) ?? ''
+  on('fs.exists', (_, e) => ({ value: at(e.path) !== '' }))
+  on('fs.read', (_, e) => ({ value: files[at(e.path)] }))
   on('ui.toast', (_, e) => {
     toasts.push(e)
 
