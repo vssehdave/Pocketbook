@@ -6,8 +6,8 @@ const TURN = { answer: '', durationMs: 1, isAborted: false, turnId: 't', reason:
 
 // A started session past the hard limit, the engine stood in for; `seen` records what the mod did to it.
 const session = async ($: any, on: any, mode: string) => {
-  const seen = { compactions: 0, prompts: [] as string[], logs: [] as string[], opens: [] as string[], kept: {} as Record<string, unknown>, status: undefined as string | undefined, config: undefined as unknown }
-  const files: Record<string, string> = {}
+  const seen = { compactions: 0, prompts: [] as string[], logs: [] as string[], opens: [] as string[], kept: {} as Record<string, unknown>, status: undefined as string | undefined, config: undefined as unknown, files: {} as Record<string, string> }
+  const files: Record<string, string> = seen.files
   const clock = mock.clock(on)
   let tokens: number | undefined = 310_000
   const kept: Record<string, unknown> = { conf: CONF, mode }
@@ -122,7 +122,7 @@ test('with a shell in the background the conversation is held, prompts are kept 
   expect(seen.status).toBeUndefined()
   expect(seen.opens).toEqual([]) // and the list is never a log row
   expect(seen.logs.join('\n')).not.toContain('login page')
-  expect(seen.prompts.at(-1)).toContain('Work through the todo list in .pocketbook/todo.md one item at a time')
+  expect(seen.prompts.at(-1)).toContain('Work on the first item on the todo list now:')
 })
 
 test('force: lets a prompt through while held and forgets the shells counted', async ($, on) => {
@@ -145,7 +145,31 @@ test('a compaction the person asks for is never refused, and hands the todo list
 
   expect((await $.session.compact({ trigger: 'manual', messages: MESSAGES })).skip).toBeUndefined()
   await clock.settle() // the hand-over is a prompt of its own, sent without waiting
-  expect(seen.prompts.at(-1)).toContain('write the docs [1]')
+  expect(seen.prompts.at(-1)).toContain('Work on the first item on the todo list now: write the docs')
+})
+
+test('a run hands over the first item, then the next once the first is gone, and stops when an item is left as it was', async ($, on) => {
+  const { seen, clock } = await session($, on, 'auto')
+  await $.tool.call({ tool: 'Bash', command: 'sleep 999', run_in_background: true })
+  await $.turn.complete(TURN)
+  await $.prompt.submit({ text: 'first task' })
+  await $.prompt.submit({ text: 'second task' })
+  await $.prompt.submit({ text: 'third task' })
+  await $.session.compact({ trigger: 'manual', messages: MESSAGES })
+  await clock.settle()
+  expect(seen.prompts.at(-1)).toContain('first task')
+
+  const todoFile = Object.keys(seen.files).find(path => path.endsWith('todo.md') && path.length > '.pocketbook/todo.md'.length)! // the engine names the file in full
+  seen.files[todoFile] ='# Pocketbook todo\n\n- second task\n- third task\n' // the first was done
+  await $.turn.complete(TURN)
+  await clock.settle()
+  expect(seen.prompts.at(-1)).toContain('second task')
+
+  const sent = seen.prompts.length
+  await $.turn.complete(TURN) // the second is still there: the run stops
+  await clock.settle()
+  expect(seen.prompts.length).toBe(sent)
+  expect(seen.logs.at(-1)).toBe('Stopped: the first item is still on the todo list. Run /pocketbook work to go on.')
 })
 
 test('a reply is never compacted under way: not at a tool call, not when a subagent finishes', async ($, on) => {

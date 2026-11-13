@@ -60,3 +60,7 @@ export const pick = (items: readonly Item[], typed: string) => {
 // told to read the full request under each item in the file.
 export const handOver = (intro: string, items: readonly Item[]) =>
   `${intro} Work through the todo list in ${TODO} one item at a time, and delete each item from the file as soon as it is done. Each item's full request is under it in the file: read it before starting, because the summary leaves things out.\n${listing(items)}`
+
+// The one item a run hands over: the first on the list, which the person may have changed since by removing or moving items.
+export const nextItem = (items: readonly Item[]) =>
+  `Work on the first item on the todo list now: ${items[0]!.summary} Its full request is under it in ${TODO}: read it before starting, and delete the item from the file when it is done. Go by the file as it is now, since items can be removed at any time.`

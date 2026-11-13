@@ -5,7 +5,7 @@ import type { Conf, Meter, Mode, Units } from '../types'
 import { K, MODES, band, ceilingOf, defaults, isMode, leftOf, limitsOf, modeColor, modeLine, modeReport, rule, softNote, usedText } from './lib'
 import type { History } from './lib'
 import { COMPACTED, PATTERN, confFor, hardLimit, sizesOf, suggested, table, tokensIn } from './analysis'
-import { BACKLOG, TODO, handOver, listing, oneLine, parse, pick, scrub, serialize, summaryOf } from './todo'
+import { BACKLOG, TODO, handOver, listing, nextItem, oneLine, parse, pick, scrub, serialize, summaryOf } from './todo'
 import type { Item } from './todo'
 
 const meter = atom({ plugin: 'pocketbook', key: 'meter' } as const, null as Meter)
@@ -18,6 +18,9 @@ const isModesOpen = atom({ plugin: 'pocketbook', key: 'isModesOpen' } as const, 
 // True while the main conversation is answering. A todo added then is pointed out to the model once that reply is over.
 const isTurn = atom({ plugin: 'pocketbook', key: 'isTurn' } as const, false)
 const added = atom({ plugin: 'pocketbook', key: 'added' } as const, false)
+// A run works the todo list first in, first out, one item per reply. It remembers how long the list was and what its first item was
+// when that item was handed over, so a reply that left the list as it was can be told from one that got somewhere.
+const going = atom({ plugin: 'pocketbook', key: 'going' } as const, null as { len: number; first: string } | null)
 // The most used of the account's rate-limit windows, 0 to 100, and the windows already warned about (kind and reset time).
 const usage = atom({ plugin: 'pocketbook', key: 'usage' } as const, 0)
 const warned = atom({ plugin: 'pocketbook', key: 'warned' } as const, [] as readonly string[])
@@ -142,24 +145,52 @@ function wrapText(text: string, width: number): string[] {
   return lines
 }
 
-// After a compaction or a clear of the main conversation: nothing is held any more, and what is on the todo list is shown and
-// handed to the model to work through.
-async function afterCompact($: any) {
-  await update($, isHeld, () => false)
-  await update($, added, () => false) // the hand-over below covers what was added
-  await refresh($)
+// Hands over the first item of the todo list, read from the file now so items removed since are skipped and the numbers are current.
+async function startRun($: any) {
   const items = await readList($, TODO)
 
   if (items.length === 0) {
+    await update($, going, () => null)
+
     return
   }
 
-  // Not awaited: the prompt starts a turn of its own once the session is idle, which is after this hook has returned.
-  void $.prompt
-    .submit({
-      text: handOver('The conversation was just compacted or cleared.', items),
-    })
-    .catch(() => undefined)
+  await update($, going, () => ({ len: items.length, first: items[0]!.full }))
+  void $.prompt.submit({ text: nextItem(items) }).catch(() => undefined)
+}
+
+// A reply has ended during a run: the next item goes over if the last one got somewhere, otherwise the run stops, so a stuck item
+// is never handed over twice in a row. A reply the person caused by typing counts too; /pocketbook work picks the run up again.
+async function continueRun($: any) {
+  const before = await read($, going)
+  const items = await readList($, TODO)
+
+  if (before === null) {
+    return
+  }
+
+  await update($, added, () => false)
+
+  if (items.length === 0) {
+    await update($, going, () => null)
+    say($, 'The todo list is done.')
+  } else if ((await read($, usage)) >= OUT) {
+    await update($, going, () => null)
+    say($, 'Usage is used up, so the todo list waits. Run /pocketbook work once it resets.')
+  } else if (items[0]!.full === before.first && items.length >= before.len) {
+    await update($, going, () => null)
+    say($, 'Stopped: the first item is still on the todo list. Run /pocketbook work to go on.')
+  } else {
+    await startRun($)
+  }
+}
+
+// After a compaction or a clear of the main conversation: nothing is held any more, and the todo list is started on.
+async function afterCompact($: any) {
+  await update($, isHeld, () => false)
+  await update($, added, () => false) // the run covers what was added
+  await refresh($)
+  await startRun($) // the prompt it submits starts a turn of its own once the session is idle
 }
 
 // Compacts now; false when the engine would not (a turn is still running, or a hook refused). Only ever asked for between replies:
@@ -573,7 +604,7 @@ async function run($: any, args: string): Promise<string> {
     }
 
     if (at === undefined || at === -1) {
-      void $.prompt.submit({ text: handOver('Start on the todo list now.', items) }).catch(() => undefined)
+      await startRun($)
 
       return `Started on ${items.length} item${items.length === 1 ? '' : 's'}.`
     }
@@ -778,6 +809,8 @@ export const register: Register = on => {
 
       if (await pastHard($)) {
         await atHardLimit($)
+      } else if ((await read($, going)) !== null) {
+        await continueRun($)
       } else if (await read($, added)) {
         await handBack($)
       }
