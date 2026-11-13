@@ -32,7 +32,13 @@ export const SUMMARY = 60
 export const summaryOf = (text: string) => {
   const line = (text.split(/\r?\n/).find(one => one.trim() !== '') ?? '').trim().replace(/\s+/g, ' ')
 
-  return line.length > SUMMARY ? `${line.slice(0, SUMMARY - 1)}…` : line
+  // Nothing rewrote this line, so an email address or something shaped like a key is blanked before it is kept.
+  const clean = line
+    .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b/g, '[email]')
+    .replace(/\b(?:sk|pk|ghp|gho|xox[a-z])[-_][A-Za-z0-9_-]{6,}/gi, '[key]')
+    .replace(/\b[A-Za-z0-9_-]{24,}\b/g, '[key]')
+
+  return clean.length > SUMMARY ? `${clean.slice(0, SUMMARY - 1)}…` : clean
 }
 
 // Each summary and its number, for a prompt to the model.

@@ -201,7 +201,7 @@ test('the details button opens the list pane, which shows each item with its num
   await pane.unmount()
 })
 
-test('a list longer than the pane has room for is paged, with its range in the title', async ($, on) => {
+test('a list longer than its half of the pane is paged with its own arrows', async ($, on) => {
   const many = Array.from({ length: 14 }, (_, i) => `- item ${i + 1}`).join(String.fromCharCode(10))
   const files: Record<string, string> = { '.pocketbook/todo.md': `# Pocketbook todo${String.fromCharCode(10, 10)}${many}${String.fromCharCode(10)}` }
   const at = (path: string) => Object.keys(files).find(key => path.replaceAll(String.fromCharCode(92), '/').endsWith(key)) ?? ''
@@ -209,11 +209,12 @@ test('a list longer than the pane has room for is paged, with its range in the t
   on('fs.read', (_, e) => ({ value: files[at(e.path)] }))
   const pane = await $.ui.mount({ plugin: 'pocketbook', component: 'Pane', requestId: 'pocketbook-list', surface: 'terminal', props: {} })
 
-  expect(await pane.find({ type: 'Text', text: /item 4/ })).toBeDefined()
-  expect(await pane.find({ type: 'Text', text: /item 8/ })).toBeUndefined()
-  expect(await pane.find({ type: 'Button', key: 'up' })).toBeUndefined() // nothing before the first page
-  await pane.press({ key: 'down' })
-  expect(await pane.find({ type: 'Text', text: /item 8/ })).toBeDefined()
-  expect(await pane.find({ type: 'Button', key: 'up' })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: /^item 2$/ })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: /^item 3$/ })).toBeUndefined() // each half has room for two items at this height
+  expect(await pane.find({ type: 'Button', key: 'up:TODO' })).toBeUndefined() // nothing before the first page
+  expect(await pane.find({ type: 'Button', key: 'down:BACKLOG' })).toBeUndefined() // the backlog is empty and has no pages
+  await pane.press({ key: 'down:TODO' })
+  expect(await pane.find({ type: 'Text', text: /^item 3$/ })).toBeDefined()
+  expect(await pane.find({ type: 'Button', key: 'up:TODO' })).toBeDefined()
   await pane.unmount()
 })
